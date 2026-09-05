@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (session.user.role === 'RESIDENT') {
       localStorage.removeItem('sigra_token')
       setUser(null)
-      throw new Error('Resident access is not available in the web app yet.')
+      throw new Error('El acceso para residentes aún no está disponible en la aplicación web.')
     }
     localStorage.setItem('sigra_token', session.accessToken)
     setUser(session.user)
