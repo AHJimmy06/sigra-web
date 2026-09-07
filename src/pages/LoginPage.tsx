@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { ShieldCheck } from 'lucide-react'
+import { LogIn, ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { ErrorState } from '@/components/PageState'
@@ -16,6 +16,6 @@ export function LoginPage() {
     {error && <ErrorState message={error} />}
     <label className="mb-4 block text-sm font-medium">Correo electrónico<input className="mt-2 w-full rounded-lg border bg-background px-3 py-2" type="email" autoComplete="email" placeholder="ejemplo@correo.com" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
     <label className="mb-6 block text-sm font-medium">Contraseña<input className="mt-2 w-full rounded-lg border bg-background px-3 py-2" type="password" autoComplete="current-password" placeholder="Escriba su contraseña" required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-    <Button className="w-full" disabled={busy}>{busy ? 'Iniciando sesión…' : 'Iniciar sesión'}</Button>
+    <Button className="w-full" disabled={busy}><LogIn className="size-4" />{busy ? 'Iniciando sesión…' : 'Iniciar sesión'}</Button>
   </form></main>
 }
