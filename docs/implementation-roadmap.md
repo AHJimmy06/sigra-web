@@ -103,6 +103,8 @@ Criterio de terminado: un administrador puede crear, consultar, editar, activar,
 
 ### Fase 3. Cartelera y comunicación
 
+Estado actual: iniciada en frontend. La cartelera ya permite crear, editar, buscar, filtrar, paginar y confirmar publicación/retiro. Falta migrar la paginación al servidor, enriquecer autoría/fechas y habilitar el consumo móvil según [backend-phase-3.md](backend-phase-3.md).
+
 Frontend web:
 
 - Paginación del servidor.
