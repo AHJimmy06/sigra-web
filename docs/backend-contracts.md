@@ -1,5 +1,7 @@
 # Contratos pendientes del backend
 
+La especificación completa de la Fase 0 está en [backend-phase-0.md](backend-phase-0.md). Este archivo conserva el resumen de contratos de paginación y reactivación para consulta rápida.
+
 ## Reactivar o revocar acceso
 
 La pantalla de residentes usa `PATCH /api/residents/:id` con el cuerpo `{ "active": true }` para activar nuevamente una cuenta y `{ "active": false }` para revocarla.

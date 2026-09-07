@@ -1,6 +1,6 @@
 # SIGRA Web
 
-React, Vite, TypeScript, Tailwind CSS, and shadcn-compatible web client for SIGRA administrators and guards. Mobile resident screens are intentionally out of scope.
+React, Vite, TypeScript, Tailwind CSS, and shadcn-compatible web client for SIGRA administrators and guards. The complete implementation plan, including the future resident mobile app, is documented in [docs/implementation-roadmap.md](docs/implementation-roadmap.md).
 
 ## Local setup
 
@@ -23,7 +23,7 @@ npm run build
 npm run preview
 ```
 
-The authenticated shell exposes admin dashboard metrics, resident and unit administration, the digital bulletin, and maintenance ticket status. Guard accounts receive only the QR scanner workflow.
+The authenticated shell exposes admin dashboard metrics, resident and unit administration, the digital bulletin, and maintenance ticket status. Guard accounts receive only the QR scanner workflow. The resident mobile application is a separate future Expo project and must consume the contracts documented in the roadmap.
 
 ## Offline limitation
 

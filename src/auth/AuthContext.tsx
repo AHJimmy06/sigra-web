@@ -19,6 +19,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(sessionUser)
     }).catch(() => localStorage.removeItem('sigra_token')).finally(() => setLoading(false))
   }, [])
+  useEffect(() => {
+    const handleSessionExpired = () => { localStorage.removeItem('sigra_token'); setUser(null) }
+    window.addEventListener('sigra:session-expired', handleSessionExpired)
+    return () => window.removeEventListener('sigra:session-expired', handleSessionExpired)
+  }, [])
   async function login(email: string, password: string) {
     const session = await api<{ accessToken: string; user: SessionUser }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
     if (session.user.role === 'RESIDENT') {
