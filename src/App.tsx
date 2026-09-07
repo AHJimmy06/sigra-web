@@ -5,6 +5,7 @@ import { AnnouncementsPage } from '@/pages/AnnouncementsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { GuardScannerPage } from '@/pages/GuardScannerPage'
 import { LoginPage } from '@/pages/LoginPage'
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage'
 import { ResidentsPage } from '@/pages/ResidentsPage'
 import { TicketsPage } from '@/pages/TicketsPage'
 import { UnitsPage } from '@/pages/UnitsPage'
@@ -34,6 +35,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/*" element={<ProtectedApp />} />
         </Routes>
       </AuthProvider>

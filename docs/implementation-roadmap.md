@@ -46,6 +46,8 @@ Criterio de terminado: los contratos principales están documentados y las respu
 
 ### Fase 1. Identidad y seguridad
 
+Estado actual: iniciada en frontend. La web ya limpia la sesión ante `401` y dispone de la pantalla `/forgot-password`; el contrato backend pendiente está en [backend-phase-1.md](backend-phase-1.md).
+
 Frontend web:
 
 - Expiración automática de sesión y redirección al login.
