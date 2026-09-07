@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/auth/AuthContext'
 import { Shell } from '@/components/Shell'
 import { AnnouncementsPage } from '@/pages/AnnouncementsPage'
+import { AccessEventsPage } from '@/pages/AccessEventsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { GuardScannerPage } from '@/pages/GuardScannerPage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -23,6 +24,7 @@ function ProtectedApp() {
         <Route path="/units" element={user.role === 'ADMIN' ? <UnitsPage /> : <Navigate to="/guard" replace />} />
         <Route path="/announcements" element={user.role === 'ADMIN' ? <AnnouncementsPage /> : <Navigate to="/guard" replace />} />
         <Route path="/tickets" element={user.role === 'ADMIN' ? <TicketsPage /> : <Navigate to="/guard" replace />} />
+        <Route path="/access-events" element={user.role === 'ADMIN' ? <AccessEventsPage /> : <Navigate to="/guard" replace />} />
         <Route path="/guard" element={user.role === 'GUARD' ? <GuardScannerPage /> : <Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to={user.role === 'GUARD' ? '/guard' : '/dashboard'} replace />} />
       </Routes>

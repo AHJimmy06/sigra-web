@@ -150,6 +150,8 @@ Criterio de terminado: una incidencia se puede crear, consultar, asignar, actual
 
 ### Fase 5. Generación y control de accesos
 
+Estado actual: iniciada en frontend. La garita tiene estados de cámara, mensajes de error claros, decisiones enriquecidas y la administración cuenta con historial filtrable de accesos. Falta conectar paginación server-side, auditoría e idempotencia con el backend según [backend-phase-5.md](backend-phase-5.md).
+
 Frontend web:
 
 - Mejorar el flujo de garita para estados de cámara, permisos y desconexión.

@@ -1,4 +1,4 @@
-import { Bell, Building2, ClipboardList, LayoutDashboard, LogOut, QrCode, ShieldCheck, UserCircle, Users } from 'lucide-react'
+import { Bell, Building2, ClipboardList, History, LayoutDashboard, LogOut, QrCode, ShieldCheck, UserCircle, Users } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 
 const adminLinks = [
   ['/dashboard', 'Panel', LayoutDashboard], ['/residents', 'Residentes', Users], ['/units', 'Unidades', Building2],
-  ['/announcements', 'Cartelera', Bell], ['/tickets', 'Incidencias', ClipboardList],
+  ['/announcements', 'Cartelera', Bell], ['/tickets', 'Incidencias', ClipboardList], ['/access-events', 'Accesos', History],
 ] as const
 
 const roleLabels = { ADMIN: 'Administrador', GUARD: 'Guardia', RESIDENT: 'Residente' } as const
