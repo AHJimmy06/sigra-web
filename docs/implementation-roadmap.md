@@ -46,7 +46,7 @@ Criterio de terminado: los contratos principales están documentados y las respu
 
 ### Fase 1. Identidad y seguridad
 
-Estado actual: iniciada en frontend. La web ya limpia la sesión ante `401` y dispone de la pantalla `/forgot-password`; el contrato backend pendiente está en [backend-phase-1.md](backend-phase-1.md).
+Estado actual: frontend implementado para login, expiración de sesión, solicitud y restablecimiento de contraseña; refresh token, revocación persistida y pruebas backend quedan pendientes. El contrato está en [backend-phase-1.md](backend-phase-1.md).
 
 Frontend web:
 
@@ -67,6 +67,8 @@ Backend:
 Criterio de terminado: ningún usuario puede acceder a una operación fuera de su rol y las sesiones vencidas se manejan sin estados inconsistentes.
 
 ### Fase 2. Administración de unidades y residentes
+
+Estado actual: iniciada en frontend. Residentes y unidades ya tienen creación, edición, filtros, paginación local, activación/revocación y confirmaciones. Falta migrar listados al servidor y completar las reglas backend descritas en [backend-phase-2.md](backend-phase-2.md).
 
 Frontend web:
 
