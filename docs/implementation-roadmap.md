@@ -150,7 +150,7 @@ Criterio de terminado: una incidencia se puede crear, consultar, asignar, actual
 
 ### Fase 5. Generación y control de accesos
 
-Estado actual: iniciada en frontend. La garita tiene estados de cámara, mensajes de error claros, decisiones enriquecidas y la administración cuenta con historial filtrable de accesos. Falta conectar paginación server-side, auditoría e idempotencia con el backend según [backend-phase-5.md](backend-phase-5.md).
+Estado actual: frontend iniciado y revisado. La garita comunica estado offline, bloquea el escaneo sin API, conserva idempotencia y muestra decisiones enriquecidas; administración cuenta con historial filtrable por rango de fechas. Falta conectar paginación server-side, auditoría e idempotencia con el backend según [backend-phase-5.md](backend-phase-5.md).
 
 Frontend web:
 
@@ -170,6 +170,8 @@ Backend:
 Criterio de terminado: cada lectura produce una decisión explicable, auditable e idempotente.
 
 ### Fase 6. Aplicación móvil offline-first
+
+Estado actual: especificación iniciada. El proyecto móvil debe ser Expo independiente; la arquitectura, almacenamiento local, cola de sincronización, seguridad y criterios de aceptación están definidos en [mobile-phase-6.md](mobile-phase-6.md).
 
 Proyecto nuevo Expo:
 
