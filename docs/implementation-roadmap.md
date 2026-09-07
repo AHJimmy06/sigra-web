@@ -126,6 +126,8 @@ Criterio de terminado: los comunicados publicados son visibles para residentes, 
 
 ### Fase 4. Incidencias de mantenimiento
 
+Estado actual: iniciada en frontend. La web ya permite buscar, filtrar por estado y prioridad, paginar, consultar detalle, adjuntos, historial y avanzar estados permitidos. Falta conectar el contrato server-side y completar creación móvil, carga de archivos y sincronización según [backend-phase-4.md](backend-phase-4.md).
+
 Frontend web:
 
 - Paginación y filtros del servidor.
