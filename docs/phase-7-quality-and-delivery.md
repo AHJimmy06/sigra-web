@@ -11,6 +11,9 @@ La Fase 7 puede iniciarse ahora para el frontend web, pero no puede cerrarse por
 - `npm run validate` para ejecutar lint y build.
 - Documentación inicial de `VITE_API_URL` y publicación.
 - Manejo de errores HTTP, red, timeout y sesión vencida.
+- Formularios administrativos con bloqueo de doble envío.
+- Logout preparado para revocación server-side con limpieza local garantizada.
+- Adaptador de compatibilidad para migrar listados de arreglos a respuestas paginadas.
 - Estados de carga, vacío, error y confirmación en módulos principales.
 
 ## 2. Pruebas que deben añadirse
@@ -19,6 +22,7 @@ La Fase 7 puede iniciarse ahora para el frontend web, pero no puede cerrarse por
 
 - `toQueryString` construye parámetros sin incluir valores vacíos.
 - `ApiError` conserva código, estado, detalles y requestId.
+- `normalizeListResponse` permite una transición controlada entre respuestas `T[]` y `PaginatedResponse<T>`.
 - Validaciones de formularios producen mensajes específicos.
 - Reglas de transición de incidencias.
 - Filtros locales y paginación.

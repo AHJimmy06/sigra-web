@@ -1,8 +1,8 @@
 // oxlint-disable react/only-export-components -- The provider and hook form one public auth boundary.
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { api, type SessionUser } from '@/api/client'
+import { ApiError, api, type SessionUser } from '@/api/client'
 
-interface AuthContextValue { user: SessionUser | null; loading: boolean; login(email: string, password: string): Promise<void>; logout(): void }
+interface AuthContextValue { user: SessionUser | null; loading: boolean; login(email: string, password: string): Promise<void>; logout(): Promise<void> }
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -17,7 +17,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
       setUser(sessionUser)
-    }).catch(() => localStorage.removeItem('sigra_token')).finally(() => setLoading(false))
+    }).catch((error: unknown) => { if (error instanceof ApiError && error.status === 401) localStorage.removeItem('sigra_token') }).finally(() => setLoading(false))
   }, [])
   useEffect(() => {
     const handleSessionExpired = () => { localStorage.removeItem('sigra_token'); setUser(null) }
@@ -34,7 +34,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('sigra_token', session.accessToken)
     setUser(session.user)
   }
-  function logout() { localStorage.removeItem('sigra_token'); setUser(null) }
+  async function logout() {
+    try { if (localStorage.getItem('sigra_token')) await api('/auth/logout', { method: 'POST' }) } catch { } finally { localStorage.removeItem('sigra_token'); setUser(null) }
+  }
   return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>
 }
 export function useAuth() { const value = useContext(AuthContext); if (!value) throw new Error('AuthProvider is missing'); return value }
