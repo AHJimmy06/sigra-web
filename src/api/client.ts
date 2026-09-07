@@ -2,7 +2,7 @@ export type Role = 'ADMIN' | 'GUARD' | 'RESIDENT'
 export interface SessionUser { sub: string; email: string; role: Role; residentId: string | null }
 import type { ApiErrorCode, ApiErrorPayload } from '@/api/contracts'
 
-const baseUrl = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/$/, '')
+const baseUrl = (import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:3000' : '')).replace(/\/$/, '')
 
 export class ApiError extends Error {
   status: number

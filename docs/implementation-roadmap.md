@@ -197,6 +197,8 @@ Criterio de terminado: las funciones esenciales de generación de pases, consult
 
 ### Fase 7. Calidad, despliegue y entrega
 
+Estado actual: iniciada para el frontend web. Ya existe Error Boundary, configuración de producción documentada y `npm run validate`; las pruebas automatizadas, staging, auditoría de dependencias, accesibilidad formal y validación móvil requieren las siguientes entregas. El plan está en [phase-7-quality-and-delivery.md](phase-7-quality-and-delivery.md).
+
 - Pruebas unitarias y de integración de cada requisito funcional.
 - Pruebas de permisos por rol.
 - Pruebas de conectividad intermitente.
