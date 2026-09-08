@@ -55,6 +55,14 @@ describe('AnnouncementsPage pagination integration', () => {
     expect(screen.getByRole('button', { name: /creando/i })).toBeDisabled()
   })
 
+  it('distinguishes an empty registry from an empty filtered result', async () => {
+    vi.mocked(api).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10 } as never)
+    render(<AnnouncementsPage />)
+    expect(await screen.findByText('Todavía no hay anuncios registrados.')).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText(/mantenimiento o ascensor/i), { target: { value: 'ascensor' } })
+    expect(await screen.findByText('No hay anuncios que coincidan con los filtros seleccionados.')).toBeInTheDocument()
+  })
+
   it('keeps publication failures accessible inside the confirmation dialog', async () => {
     vi.mocked(api).mockImplementation((_path, options) => options?.method === 'PATCH' ? Promise.reject(new Error('No fue posible retirar este anuncio.')) : Promise.resolve(response) as never)
     render(<AnnouncementsPage />)

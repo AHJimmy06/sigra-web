@@ -8,6 +8,7 @@ vi.mock('@/auth/AuthContext', () => ({ AuthProvider: ({ children }: { children: 
 vi.mock('@/components/Shell', () => ({ Shell: ({ children }: { children: ReactNode }) => <>{children}</> }))
 vi.mock('@/pages/DashboardPage', () => ({ DashboardPage: () => <div>Admin dashboard</div> }))
 vi.mock('@/pages/GuardScannerPage', () => ({ GuardScannerPage: () => <div>Guard scanner</div> }))
+vi.mock('@/pages/AccessEventsPage', () => ({ AccessEventsPage: () => <div>Access history</div> }))
 
 describe('role routes', () => {
   beforeEach(() => window.history.pushState({}, '', '/'))
@@ -26,6 +27,19 @@ describe('role routes', () => {
     render(<App />)
     expect(await screen.findByText('Guard scanner')).toBeInTheDocument()
     expect(screen.queryByText('Admin dashboard')).not.toBeInTheDocument()
+  })
+
+  it('allows ADMIN and blocks GUARD access to access history', async () => {
+    auth.user = { role: 'ADMIN' }
+    window.history.pushState({}, '', '/access-events')
+    const adminView = render(<App />)
+    expect(await screen.findByText('Access history')).toBeInTheDocument()
+    adminView.unmount()
+
+    auth.user = { role: 'GUARD' }
+    render(<App />)
+    expect(await screen.findByText('Guard scanner')).toBeInTheDocument()
+    expect(screen.queryByText('Access history')).not.toBeInTheDocument()
   })
 
   it('does not expose routes for backend capabilities that are not implemented', async () => {

@@ -1,10 +1,12 @@
 export type ApiErrorCode =
   | 'VALIDATION_ERROR'
+  | 'BAD_REQUEST'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'RATE_LIMITED'
+  | 'INTERNAL_ERROR'
   | 'NETWORK_ERROR'
   | 'TIMEOUT'
   | 'UNKNOWN_ERROR'

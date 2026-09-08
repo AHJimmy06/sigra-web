@@ -70,6 +70,7 @@ Reglas:
 - `code` es estable y apto para lógica del frontend.
 - `message` es un mensaje general seguro para mostrar.
 - `details` usa nombres de campo del DTO y arreglos de mensajes.
+- `details` siempre está presente; usa `{}` cuando no existen errores por campo.
 - `requestId` aparece en logs y se devuelve al cliente para soporte.
 - No devolver stack traces, consultas SQL, nombres de tablas, tokens ni secretos.
 - Para `401`, usar `UNAUTHORIZED`; para `403`, `FORBIDDEN`; para duplicados, `CONFLICT`.
@@ -191,7 +192,7 @@ Validaciones mínimas:
 
 - `name`: obligatorio, 3 a 100 caracteres.
 - `email`: obligatorio, formato válido, único.
-- `phone`: opcional, formato definido por el negocio.
+- `phone`: opcional, 7 a 40 caracteres, al menos 7 dígitos; acepta prefijo internacional, espacios, paréntesis, puntos, guiones y extensión numérica `ext.` o `x`.
 - `unitId`: obligatorio y debe apuntar a una unidad activa.
 - `password`: obligatorio, entre 8 y 72 caracteres; almacenar únicamente hash.
 
@@ -222,7 +223,7 @@ Validaciones:
 
 - `code`: obligatorio, único, 2 a 30 caracteres.
 - `address`: obligatorio, 5 a 160 caracteres.
-- `parkingSpaces`: entero entre 0 y el máximo definido por el negocio.
+- `parkingSpaces`: entero entre 0 y 1000, validado también por una restricción de PostgreSQL.
 - Solo `ADMIN` puede modificar.
 - No desactivar una unidad con residentes activos sin aplicar una regla explícita.
 
@@ -274,7 +275,7 @@ Debe devolver los campos que ya consume el frontend:
 }
 ```
 
-El backend debe definir la zona horaria del conjunto residencial y documentarla.
+La zona horaria se configura con `RESIDENTIAL_TIME_ZONE` (IANA) y usa `America/Guayaquil` por defecto. “Hoy” y el flujo de siete días se calculan en esa zona, incluyendo eventos autorizados y denegados.
 
 ### Validación de acceso
 

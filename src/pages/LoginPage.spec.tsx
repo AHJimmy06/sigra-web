@@ -23,4 +23,18 @@ describe('LoginPage form', () => {
     fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }))
     await waitFor(() => expect(login).toHaveBeenCalledWith('admin@example.com', 'secure-password'))
   })
+
+  it('toggles password visibility without changing the field contract', () => {
+    render(<MemoryRouter><LoginPage /></MemoryRouter>)
+    const password = screen.getByPlaceholderText('Escriba su contraseña')
+    const toggle = screen.getByRole('button', { name: 'Mostrar contraseña' })
+
+    expect(password).toHaveAttribute('name', 'password')
+    expect(password).toHaveAttribute('type', 'password')
+    expect(password).toHaveAttribute('autocomplete', 'current-password')
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(toggle)
+    expect(password).toHaveAttribute('type', 'text')
+    expect(screen.getByRole('button', { name: 'Ocultar contraseña' })).toHaveAttribute('aria-pressed', 'true')
+  })
 })

@@ -27,6 +27,8 @@ La aplicación móvil para residentes no está dentro de este repositorio. Para 
 
 Objetivo: estabilizar las reglas comunes antes de añadir módulos.
 
+Estado actual: completada en API y frontend web. Los contratos HTTP, autorización, paginación, auditoría, OpenAPI, validaciones compartidas e idempotencia de accesos cuentan con pruebas automatizadas. La aplicación móvil y los flujos de identidad posteriores permanecen fuera de esta fase.
+
 Frontend web:
 
 - Crear tipos compartidos para respuestas paginadas, errores y estados.
@@ -150,7 +152,7 @@ Criterio de terminado: una incidencia se puede crear, consultar, asignar, actual
 
 ### Fase 5. Generación y control de accesos
 
-Estado actual: frontend iniciado y revisado. La garita comunica estado offline, bloquea el escaneo sin API, conserva idempotencia y muestra decisiones enriquecidas; administración cuenta con historial filtrable por rango de fechas. Falta conectar paginación server-side, auditoría e idempotencia con el backend según [backend-phase-5.md](backend-phase-5.md).
+Estado actual: contrato web/API conectado. La garita comunica estado offline, bloquea el escaneo sin API y conserva `clientEventId` durante reintentos; la API valida reintentos compatibles, rechaza los incompatibles, audita cada decisión nueva y expone historial administrativo con búsqueda, filtros, paginación y trazabilidad. El modo offline con verificación local continúa explícitamente fuera de alcance.
 
 Frontend web:
 
@@ -163,7 +165,7 @@ Frontend web:
 Backend:
 
 - `POST /api/access/validate`
-- `GET /api/access/events?from=&to=&decision=&direction=&page=&pageSize=`
+- `GET /api/access/events?search=&from=&to=&decision=&direction=&page=&pageSize=`
 - `GET /api/access/events/:id`
 - `POST /api/access/events/:id/retry` solo si el negocio lo requiere.
 

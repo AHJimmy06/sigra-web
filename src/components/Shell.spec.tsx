@@ -11,12 +11,20 @@ describe('Shell responsive navigation', () => {
     vi.mocked(useAuth).mockReturnValue({ user: { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }, loading: false, login: vi.fn(), logout: vi.fn() })
     render(<MemoryRouter><Shell><p>Content</p></Shell></MemoryRouter>)
 
-    for (const name of ['Panel', 'Residentes', 'Unidades', 'Cartelera', 'Incidencias']) {
+    for (const name of ['Panel', 'Residentes', 'Unidades', 'Cartelera', 'Incidencias', 'Accesos']) {
       expect(screen.getByRole('link', { name })).toHaveAttribute('title', name)
     }
     const collapse = screen.getByRole('button', { name: 'Colapsar menú lateral' })
     expect(collapse).toHaveAttribute('aria-controls', 'primary-navigation')
     expect(collapse).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('does not expose administration links to guards', () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'guard-1', email: 'guard@example.com', role: 'GUARD', residentId: null }, loading: false, login: vi.fn(), logout: vi.fn() })
+    render(<MemoryRouter><Shell><p>Content</p></Shell></MemoryRouter>)
+
+    expect(screen.getByRole('link', { name: 'Escáner QR' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Accesos' })).not.toBeInTheDocument()
   })
 
   it('updates the control and retains navigation names when collapsed', () => {

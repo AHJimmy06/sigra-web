@@ -26,10 +26,10 @@ Response:
 {
   "id": "event-uuid",
   "decision": "ALLOWED",
-  "reason": "ALLOWED",
+  "reason": "VALID_PASS",
+  "direction": "ENTRY",
   "occurredAt": "2026-09-07T15:30:00.000Z",
-  "residentName": "Ana García",
-  "unitCode": "Torre A-101"
+  "requestId": "req_01J..."
 }
 ```
 
@@ -38,7 +38,7 @@ Valores:
 ```text
 decision: ALLOWED | DENIED
 direction: ENTRY | EXIT
-reason: ALLOWED | DENIED | EXPIRED | INVALID | INVALID_TOTP | RESIDENT_INACTIVE | UNIT_INACTIVE
+reason: VALID_PASS | INVALID_QR | PASS_NOT_FOUND | PASS_REVOKED | PASS_EXPIRED | ACCESS_REVOKED | INVALID_OR_EXPIRED_TOKEN
 ```
 
 Reglas criptográficas:
@@ -54,6 +54,8 @@ Reglas operativas:
 - El guardia autenticado debe estar activo y autorizado para la garita.
 - `clientEventId` debe tener restricción única para idempotencia.
 - Repetir la misma solicitud debe devolver el mismo evento, no crear uno nuevo.
+- La equivalencia se comprueba con una huella SHA-256 del payload, dirección y guardia. El payload QR original no se persiste.
+- Reutilizar `clientEventId` con una solicitud distinta responde `409 CONFLICT` y no ejecuta otra validación.
 - Registrar decisión permitida o denegada, motivo, dirección, guardia y hora.
 - Responder con motivo seguro, sin revelar información que facilite ataques.
 
@@ -80,6 +82,7 @@ Respuesta:
       "reason": "EXPIRED",
       "direction": "ENTRY",
       "occurredAt": "2026-09-07T15:30:00.000Z",
+      "requestId": "req_01J...",
       "resident": {
         "name": "Ana García",
         "unitCode": "Torre A-101"
@@ -101,7 +104,7 @@ Reglas:
 - `search` busca residente, unidad y guardia.
 - `decision` acepta `ALLOWED` o `DENIED`.
 - `direction` acepta `ENTRY` o `EXIT`.
-- `from` y `to` deben interpretarse en la zona horaria documentada y convertirse a UTC.
+- Las fechas simples de `from` y `to` se interpretan como días completos en `RESIDENTIAL_TIME_ZONE` (`America/Guayaquil` por defecto) y se convierten a UTC. Los timestamps ISO conservan su offset explícito.
 - Orden estable: `occurredAt DESC, id DESC`.
 - Aplicar límites de `pageSize` e índices para consultas por fecha.
 
@@ -162,10 +165,10 @@ Debe calcular con la misma fuente de eventos:
 
 Definir:
 
-- Zona horaria del conjunto.
-- Qué significa “hoy”.
-- Si el flujo incluye autorizados y denegados.
-- Cómo se comportan días sin eventos.
+- La zona horaria es `RESIDENTIAL_TIME_ZONE`, con `America/Guayaquil` por defecto.
+- “Hoy” empieza a medianoche en esa zona y se convierte a UTC para consultar.
+- El flujo incluye autorizados y denegados.
+- Los días sin eventos aparecen con total `0`.
 
 ## 6. Seguridad de la garita
 

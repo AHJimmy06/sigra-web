@@ -42,6 +42,8 @@ export function ResidentsPage() {
   const [createError, setCreateError] = useState('')
   const [editError, setEditError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [createDirty, setCreateDirty] = useState(false)
+  const [discardCreateOpen, setDiscardCreateOpen] = useState(false)
   const [editing, setEditing] = useState<Resident | null>(null)
   const [pendingAccess, setPendingAccess] = useState<{ item: Resident; active: boolean } | null>(null)
   const [accessBusy, setAccessBusy] = useState(false)
@@ -54,6 +56,16 @@ export function ResidentsPage() {
   const [page, setPage] = useState(1)
   const [reloadVersion, setReloadVersion] = useState(0)
   const pageSize = 10
+
+  function closeCreate() {
+    if (createDirty) setDiscardCreateOpen(true)
+    else setModalOpen(false)
+  }
+
+  function trackCreateChanges(event: FormEvent<HTMLFormElement>) {
+    clearSpanishValidationMessage(event)
+    setCreateDirty([...new FormData(event.currentTarget).values()].some((value) => String(value) !== ''))
+  }
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -89,6 +101,7 @@ export function ResidentsPage() {
     try {
       await api('/residents', { method: 'POST', body: JSON.stringify({ name: data.get('name'), phone: data.get('phone'), unitId: data.get('unitId'), email: String(data.get('email')).trim().toLowerCase(), password: data.get('password') }) })
       form.reset()
+      setCreateDirty(false)
       setModalOpen(false)
       setReloadVersion((value) => value + 1)
     } catch (value) {
@@ -136,6 +149,7 @@ export function ResidentsPage() {
   }
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const hasFilters = Boolean(query.trim()) || statusFilter !== 'ALL' || unitFilter !== 'ALL'
   return <>
     <PageHeader title="Residentes" description="Gestione las cuentas, unidades asignadas y permisos de acceso." action={<Button onClick={() => { setCreateError(''); setModalOpen(true) }}><Plus className="size-4" />Agregar residente</Button>} />
     {error && !pendingAccess && <ErrorState message={error} onRetry={() => void load()} />}
@@ -147,27 +161,28 @@ export function ResidentsPage() {
         <label><span className="sr-only">Filtrar por unidad</span><select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value); setPage(1) }} className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"><option value="ALL">Todas las unidades</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.code}</option>)}</select></label>
       </div>
     </section>
-    <Modal open={modalOpen} onClose={() => setModalOpen(false)} busy={createBusy} title="Agregar residente" description="Complete los campos obligatorios. Los campos marcados como opcionales pueden dejarse vacíos.">
-      <form id="create-resident-form" onSubmit={create} onInvalid={setSpanishValidationMessage} onInput={clearSpanishValidationMessage} className="grid gap-3">
+    <Modal open={modalOpen} onClose={closeCreate} busy={createBusy} title="Agregar residente" description="Complete los campos obligatorios. Los campos marcados como opcionales pueden dejarse vacíos.">
+      <form id="create-resident-form" onSubmit={create} onInvalid={setSpanishValidationMessage} onInput={trackCreateChanges} className="grid gap-3">
         <ModalError message={createError} />
         <label className="grid gap-1 text-sm font-medium">Nombre completo <span className="font-normal text-muted-foreground">(obligatorio)</span><input name="name" required minLength={3} maxLength={100} autoComplete="name" placeholder="Ej. Ana García" className="rounded-lg border px-3 py-2 font-normal" /></label>
         <label className="grid gap-1 text-sm font-medium">Correo electrónico <span className="font-normal text-muted-foreground">(obligatorio)</span><input name="email" required type="email" autoComplete="email" placeholder="ana.garcia@correo.com" onBlur={(event) => { event.currentTarget.value = event.currentTarget.value.trim().toLowerCase() }} className="rounded-lg border px-3 py-2 font-normal" /></label>
-        <label className="grid gap-1 text-sm font-medium">Teléfono <span className="font-normal text-muted-foreground">(opcional)</span><input name="phone" maxLength={40} autoComplete="tel" placeholder="Ej. +593 300 123 4567 ext. 4" className="rounded-lg border px-3 py-2 font-normal" /></label>
+        <label className="grid gap-1 text-sm font-medium">Teléfono <span className="font-normal text-muted-foreground">(opcional)</span><input name="phone" minLength={7} maxLength={40} pattern="[+0-9\(\) .\-]{7,40}(?:(?:ext[.]?|x) ?[0-9]+)?" autoComplete="tel" placeholder="Ej. +593 300 123 4567 ext. 4" className="rounded-lg border px-3 py-2 font-normal" /></label>
         <label className="grid gap-1 text-sm font-medium">Unidad residencial <span className="font-normal text-muted-foreground">(obligatorio)</span><select name="unitId" required className="cursor-pointer rounded-lg border bg-background px-3 py-2 font-normal"><option value="">Seleccione una unidad</option>{units.filter((unit) => unit.active).map((unit) => <option key={unit.id} value={unit.id}>{unit.code}</option>)}</select></label>
         <label className="grid gap-1 text-sm font-medium">Contraseña temporal <span className="font-normal text-muted-foreground">(obligatorio)</span><input name="password" required type="password" minLength={8} maxLength={72} autoComplete="new-password" placeholder="Mínimo 8 caracteres" className="rounded-lg border px-3 py-2 font-normal" /></label>
-        <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="outline" disabled={createBusy} onClick={() => setModalOpen(false)}><X className="size-4" />Cancelar</Button><Button type="submit" disabled={createBusy}><Plus className="size-4" />{createBusy ? 'Creando…' : 'Crear residente'}</Button></div>
+        <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="outline" disabled={createBusy} onClick={closeCreate}><X className="size-4" />Cancelar</Button><Button type="submit" disabled={createBusy}><Plus className="size-4" />{createBusy ? 'Creando…' : 'Crear residente'}</Button></div>
       </form>
     </Modal>
+    <ConfirmDialog open={discardCreateOpen} onCancel={() => setDiscardCreateOpen(false)} onConfirm={() => { setDiscardCreateOpen(false); setCreateDirty(false); setModalOpen(false) }} title="Descartar cambios" description="Los datos ingresados en el formulario no se guardarán." notice="Esta acción no se puede deshacer." confirmLabel="Descartar cambios" destructive />
     <Modal open={Boolean(editing)} onClose={() => setEditing(null)} busy={editBusy} title="Editar residente" description="Actualice los datos administrativos del residente. El correo y la contraseña se gestionan mediante seguridad de cuenta.">
       <form id="edit-resident-form" onSubmit={update} onInvalid={setSpanishValidationMessage} onInput={clearSpanishValidationMessage} className="grid gap-3">
         <ModalError message={editError} />
         <label className="grid gap-1 text-sm font-medium">Nombre completo <span className="font-normal text-muted-foreground">(obligatorio)</span><input name="name" required minLength={3} maxLength={100} defaultValue={editing?.name} className="rounded-lg border px-3 py-2 font-normal" /></label>
-        <label className="grid gap-1 text-sm font-medium">Teléfono <span className="font-normal text-muted-foreground">(opcional)</span><input name="phone" maxLength={40} defaultValue={editing?.phone ?? ''} placeholder="Ej. +593 300 123 4567 ext. 4" className="rounded-lg border px-3 py-2 font-normal" /></label>
+        <label className="grid gap-1 text-sm font-medium">Teléfono <span className="font-normal text-muted-foreground">(opcional)</span><input name="phone" minLength={7} maxLength={40} pattern="[+0-9\(\) .\-]{7,40}(?:(?:ext[.]?|x) ?[0-9]+)?" defaultValue={editing?.phone ?? ''} placeholder="Ej. +593 300 123 4567 ext. 4" className="rounded-lg border px-3 py-2 font-normal" /></label>
         <label className="grid gap-1 text-sm font-medium">Unidad residencial <span className="font-normal text-muted-foreground">(obligatorio)</span><select name="unitId" required defaultValue={editing?.unit.id} className="cursor-pointer rounded-lg border bg-background px-3 py-2"><option value="">Seleccione una unidad</option>{units.filter((unit) => unit.active || unit.id === editing?.unit.id).map((unit) => <option key={unit.id} value={unit.id}>{unit.code}</option>)}</select></label>
         <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="outline" disabled={editBusy} onClick={() => setEditing(null)}><X className="size-4" />Cancelar</Button><Button type="submit" disabled={editBusy}><Edit className="size-4" />{editBusy ? 'Guardando…' : 'Guardar cambios'}</Button></div>
       </form>
     </Modal>
-    {loading ? <LoadingState /> : items.length === 0 ? <EmptyState>No hay residentes que coincidan con los filtros seleccionados.</EmptyState> : <><div className="overflow-x-auto rounded-xl border bg-card"><table className="w-full text-left text-sm"><thead className="border-b bg-muted/50"><tr><th className="p-3">Residente</th><th className="p-3">Unidad</th><th className="p-3">Teléfono</th><th className="p-3">Estado</th><th className="p-3 text-right"><span className="sr-only">Acciones</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-3 font-medium">{item.name}</td><td className="p-3">{item.unit.code}</td><td className="p-3">{item.phone || 'No registrado'}</td><td className="p-3">{item.active ? 'Activo' : 'Revocado'}</td><td className="flex justify-end gap-2 p-3"><Button variant="outline" size="sm" aria-label={`Editar a ${item.name}`} onClick={() => { setEditError(''); setEditing(item) }}><Edit className="size-4" />Editar</Button>{item.active ? <Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingAccess({ item, active: false }) }}><UserRoundX className="size-4" />Revocar acceso</Button> : <Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingAccess({ item, active: true }) }}><RotateCcw className="size-4" />Activar acceso</Button>}</td></tr>)}</tbody></table></div><Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPageChange={setPage} /></>}
+    {loading ? <LoadingState /> : items.length === 0 ? <EmptyState>{hasFilters ? 'No hay residentes que coincidan con los filtros seleccionados.' : 'Todavía no hay residentes registrados.'}</EmptyState> : <><div className="overflow-x-auto rounded-xl border bg-card"><table className="w-full text-left text-sm"><thead className="border-b bg-muted/50"><tr><th className="p-3">Residente</th><th className="p-3">Unidad</th><th className="p-3">Teléfono</th><th className="p-3">Estado</th><th className="p-3 text-right"><span className="sr-only">Acciones</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-3 font-medium">{item.name}</td><td className="p-3">{item.unit.code}</td><td className="p-3">{item.phone || 'No registrado'}</td><td className="p-3">{item.active ? 'Activo' : 'Revocado'}</td><td className="flex justify-end gap-2 p-3"><Button variant="outline" size="sm" aria-label={`Editar a ${item.name}`} onClick={() => { setEditError(''); setEditing(item) }}><Edit className="size-4" />Editar</Button>{item.active ? <Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingAccess({ item, active: false }) }}><UserRoundX className="size-4" />Revocar acceso</Button> : <Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingAccess({ item, active: true }) }}><RotateCcw className="size-4" />Activar acceso</Button>}</td></tr>)}</tbody></table></div><Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPageChange={setPage} /></>}
     <ConfirmDialog open={Boolean(pendingAccess)} onCancel={() => setPendingAccess(null)} onConfirm={() => { if (pendingAccess) void setAccess(pendingAccess.item, pendingAccess.active) }} busy={accessBusy} error={accessError} title={pendingAccess?.active ? 'Activar acceso' : 'Revocar acceso'} description={pendingAccess ? `¿Desea ${pendingAccess.active ? 'activar nuevamente' : 'revocar'} el acceso de ${pendingAccess.item.name}?` : ''} confirmLabel={pendingAccess?.active ? 'Activar acceso' : 'Revocar acceso'} destructive={pendingAccess ? !pendingAccess.active : false} />
   </>
 }

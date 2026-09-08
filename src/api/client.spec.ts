@@ -87,4 +87,33 @@ describe('API client', () => {
       expect.objectContaining({ code: 'CONFLICT', details: { email: ['Used'] } }),
     )
   })
+
+  it('accepts only status-compatible stable server codes', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'MADE_UP', message: 'Trust me' }), { status: 403 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'CONFLICT', message: 'Conflict' }), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'VALIDATION_ERROR', message: 'Validation failed' }), { status: 400 }))
+
+    await expect(api('/one', { retries: 0 })).rejects.toMatchObject({ code: 'FORBIDDEN' })
+    await expect(api('/two', { retries: 0 })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
+    await expect(api('/three', { retries: 0 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' })
+  })
+
+  it('sanitizes malformed details, request IDs, and arbitrary server messages', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        code: 'CONFLICT',
+        message: '<script>unsafe</script>',
+        details: { email: ['Used'], leak: 'raw SQL' },
+        requestId: 'unsafe request id',
+      }), { status: 409 }),
+    )
+
+    await expect(api('/residents', { retries: 0 })).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'La solicitud entra en conflicto con los datos existentes.',
+      details: { email: ['Used'] },
+      requestId: undefined,
+    })
+  })
 })

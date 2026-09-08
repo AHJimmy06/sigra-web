@@ -64,6 +64,14 @@ describe('UnitsPage pagination integration', () => {
     expect(screen.queryByText('OLD-1')).not.toBeInTheDocument()
   })
 
+  it('distinguishes an empty registry from an empty filtered result', async () => {
+    vi.mocked(api).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10 })
+    render(<UnitsPage />)
+    expect(await screen.findByText('Todavía no hay unidades registradas.')).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText(/Torre A-101 o Calle 10/i), { target: { value: 'Torre' } })
+    expect(await screen.findByText('No hay unidades que coincidan con los filtros seleccionados.')).toBeInTheDocument()
+  })
+
   it('keeps activation failures accessible inside the confirmation dialog', async () => {
     vi.mocked(api).mockImplementation((_path, options) => options?.method === 'PATCH' ? Promise.reject(new Error('No fue posible desactivar esta unidad.')) : Promise.resolve({ items: [{ id: 'unit-1', code: 'A-101', address: 'Main Street 101', parkingSpaces: 2, active: true }], total: 1, page: 1, pageSize: 10 }))
     render(<UnitsPage />)

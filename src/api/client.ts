@@ -26,17 +26,18 @@ export class ApiError extends Error {
 }
 
 function errorCode(status: number): ApiErrorCode {
-  if (status === 400) return 'VALIDATION_ERROR'
+  if (status === 400) return 'BAD_REQUEST'
   if (status === 401) return 'UNAUTHORIZED'
   if (status === 403) return 'FORBIDDEN'
   if (status === 404) return 'NOT_FOUND'
   if (status === 409) return 'CONFLICT'
   if (status === 429) return 'RATE_LIMITED'
+  if (status >= 500) return 'INTERNAL_ERROR'
   return 'UNKNOWN_ERROR'
 }
 
 function defaultErrorMessage(code: ApiErrorCode): string {
-  const messages: Record<ApiErrorCode, string> = { VALIDATION_ERROR: 'La solicitud contiene datos no válidos.', UNAUTHORIZED: 'La sesión no es válida o ha vencido.', FORBIDDEN: 'No tiene permisos para realizar esta acción.', NOT_FOUND: 'No se encontró el recurso solicitado.', CONFLICT: 'La solicitud entra en conflicto con los datos existentes.', RATE_LIMITED: 'Se realizaron demasiadas solicitudes. Inténtelo de nuevo más tarde.', NETWORK_ERROR: 'No fue posible conectar con el servidor.', TIMEOUT: 'El servidor tardó demasiado en responder.', UNKNOWN_ERROR: 'No fue posible completar la solicitud.' }
+  const messages: Record<ApiErrorCode, string> = { VALIDATION_ERROR: 'La solicitud contiene datos no válidos.', BAD_REQUEST: 'La solicitud no es válida.', UNAUTHORIZED: 'La sesión no es válida o ha vencido.', FORBIDDEN: 'No tiene permisos para realizar esta acción.', NOT_FOUND: 'No se encontró el recurso solicitado.', CONFLICT: 'La solicitud entra en conflicto con los datos existentes.', RATE_LIMITED: 'Se realizaron demasiadas solicitudes. Inténtelo de nuevo más tarde.', INTERNAL_ERROR: 'No fue posible completar la solicitud.', NETWORK_ERROR: 'No fue posible conectar con el servidor.', TIMEOUT: 'El servidor tardó demasiado en responder.', UNKNOWN_ERROR: 'No fue posible completar la solicitud.' }
   return messages[code]
 }
 
@@ -58,6 +59,25 @@ function errorMessage(payload: ApiErrorPayload, code: ApiErrorCode) {
 
 async function readErrorPayload(response: Response): Promise<ApiErrorPayload> {
   try { return await response.json() as ApiErrorPayload } catch { return {} }
+}
+
+const serverErrorCodes = new Set<ApiErrorCode>(['VALIDATION_ERROR', 'BAD_REQUEST', 'UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'CONFLICT', 'RATE_LIMITED', 'INTERNAL_ERROR'])
+
+function normalizedServerCode(payload: ApiErrorPayload, status: number): ApiErrorCode {
+  const fallback = errorCode(status)
+  if (typeof payload.code !== 'string' || !serverErrorCodes.has(payload.code as ApiErrorCode)) return fallback
+  const code = payload.code as ApiErrorCode
+  if (status === 400 && (code === 'VALIDATION_ERROR' || code === 'BAD_REQUEST')) return code
+  const expectedStatus: Partial<Record<ApiErrorCode, number>> = { UNAUTHORIZED: 401, FORBIDDEN: 403, NOT_FOUND: 404, CONFLICT: 409, RATE_LIMITED: 429, INTERNAL_ERROR: 500 }
+  return expectedStatus[code] === status || (code === 'INTERNAL_ERROR' && status >= 500) ? code : fallback
+}
+
+function normalizedPayload(payload: ApiErrorPayload): ApiErrorPayload {
+  const details = payload.details && typeof payload.details === 'object' && !Array.isArray(payload.details)
+    ? Object.fromEntries(Object.entries(payload.details).filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every((value) => typeof value === 'string')))
+    : {}
+  const requestId = typeof payload.requestId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(payload.requestId) ? payload.requestId : undefined
+  return { ...payload, details, requestId }
 }
 
 function shouldRetry(method: string, error: unknown) {
@@ -100,8 +120,8 @@ async function request<T>(path: string, options: ApiRequestOptions): Promise<T> 
     options.signal?.removeEventListener('abort', abortExternalRequest)
   }
   if (!response.ok) {
-    const payload = await readErrorPayload(response)
-    const code = errorCode(response.status)
+    const payload = normalizedPayload(await readErrorPayload(response))
+    const code = normalizedServerCode(payload, response.status)
     const message = errorMessage(payload, code)
     if (response.status === 401) window.dispatchEvent(new CustomEvent('sigra:session-expired'))
     throw new ApiError(response.status, message, code, payload)

@@ -26,7 +26,7 @@ describe('ResidentsPage pagination integration', () => {
     await waitFor(() => expect(api).toHaveBeenCalledWith(expect.stringContaining('/residents?page=2&pageSize=10'), expect.anything()))
   })
 
-  it('matches resident DTO boundaries without unsupported name, phone, or password policies', async () => {
+  it('matches resident DTO boundaries including the international phone policy', async () => {
     render(<ResidentsPage />)
     await screen.findByText('Ana Garcia')
     fireEvent.click(screen.getByRole('button', { name: /agregar residente/i }))
@@ -37,10 +37,47 @@ describe('ResidentsPage pagination integration', () => {
     expect(name).toHaveAttribute('maxlength', '100')
     expect(name).not.toHaveAttribute('pattern')
     expect(phone).toHaveAttribute('maxlength', '40')
-    expect(phone).not.toHaveAttribute('pattern')
+    expect(phone).toHaveAttribute('minlength', '7')
+    expect(phone).toHaveAttribute('pattern')
+    fireEvent.change(phone, { target: { value: 'extension textual' } })
+    expect(phone).toBeInvalid()
+    fireEvent.input(phone, { target: { value: '+593 300 123 4567 ext. 4' } })
+    expect(phone).toBeValid()
     expect(password).toHaveAttribute('minlength', '8')
     expect(password).toHaveAttribute('maxlength', '72')
     expect(password).not.toHaveAttribute('pattern')
+  })
+
+  it('confirms discarding only after the creation form is modified', async () => {
+    render(<ResidentsPage />)
+    await screen.findByText('Ana Garcia')
+    fireEvent.click(screen.getByRole('button', { name: /agregar residente/i }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: /agregar residente/i })).getByRole('button', { name: /cancelar/i }))
+    expect(screen.queryByRole('dialog', { name: /descartar cambios/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar residente/i }))
+    const name = screen.getByPlaceholderText('Ej. Ana García')
+    fireEvent.input(name, { target: { value: 'Ana' } })
+    fireEvent.input(name, { target: { value: '' } })
+    fireEvent.click(within(screen.getByRole('dialog', { name: /agregar residente/i })).getByRole('button', { name: /cancelar/i }))
+    expect(screen.queryByRole('dialog', { name: /descartar cambios/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar residente/i }))
+    fireEvent.input(screen.getByPlaceholderText('Ej. Ana García'), { target: { value: 'Ana' } })
+    fireEvent.click(within(screen.getByRole('dialog', { name: /agregar residente/i })).getByRole('button', { name: /cancelar/i }))
+    const confirmation = screen.getByRole('dialog', { name: /descartar cambios/i })
+    fireEvent.click(within(confirmation).getByRole('button', { name: /descartar cambios/i }))
+    expect(screen.queryByRole('dialog', { name: /agregar residente/i })).not.toBeInTheDocument()
+  })
+
+  it('distinguishes an empty registry from an empty filtered result', async () => {
+    vi.mocked(api).mockImplementation((path) => Promise.resolve(path.startsWith('/units')
+      ? { items: [], total: 0, page: 1, pageSize: 100 }
+      : { items: [], total: 0, page: 1, pageSize: 10 }) as never)
+    render(<ResidentsPage />)
+    expect(await screen.findByText('Todavía no hay residentes registrados.')).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText(/Ana García o Torre/i), { target: { value: 'Ana' } })
+    expect(await screen.findByText('No hay residentes que coincidan con los filtros seleccionados.')).toBeInTheDocument()
   })
 
   it('normalizes API-normalized email and keeps structured errors inside the modal', async () => {
@@ -55,7 +92,7 @@ describe('ResidentsPage pagination integration', () => {
     fireEvent.click(screen.getByRole('button', { name: /agregar residente/i }))
     fireEvent.change(screen.getByPlaceholderText('Ej. Ana García'), { target: { value: "Zoë O'Connor-Sánchez" } })
     fireEvent.change(screen.getByPlaceholderText('ana.garcia@correo.com'), { target: { value: '  ANA@example.com  ' } })
-    fireEvent.change(screen.getByPlaceholderText(/ext\. 4/i), { target: { value: 'extension textual' } })
+    fireEvent.change(screen.getByPlaceholderText(/ext\. 4/i), { target: { value: '+593 300 123 4567 ext. 4' } })
     fireEvent.change(screen.getByRole('combobox', { name: /unidad residencial/i }), { target: { value: 'unit-1' } })
     fireEvent.change(screen.getByPlaceholderText('Mínimo 8 caracteres'), { target: { value: 'abcdefgh' } })
     fireEvent.submit(screen.getByRole('button', { name: /crear residente/i }).closest('form')!)
@@ -65,7 +102,7 @@ describe('ResidentsPage pagination integration', () => {
     expect(phone).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByRole('dialog')).toHaveTextContent('La solicitud contiene datos no válidos.')
     const post = vi.mocked(api).mock.calls.find(([, options]) => options?.method === 'POST')
-    expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ name: "Zoë O'Connor-Sánchez", phone: 'extension textual', email: 'ana@example.com', password: 'abcdefgh' })
+    expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ name: "Zoë O'Connor-Sánchez", phone: '+593 300 123 4567 ext. 4', email: 'ana@example.com', password: 'abcdefgh' })
   })
 
   it('loads every unit page in stable order and allows selecting a later-page unit', async () => {
