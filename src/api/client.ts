@@ -1,6 +1,12 @@
+import type { ApiErrorCode, ApiErrorPayload } from '@/api/contracts'
+
 export type Role = 'ADMIN' | 'GUARD' | 'RESIDENT'
 export interface SessionUser { sub: string; email: string; role: Role; residentId: string | null }
-import type { ApiErrorCode, ApiErrorPayload } from '@/api/contracts'
+
+export interface ApiRequestOptions extends RequestInit {
+  timeoutMs?: number
+  retries?: number
+}
 
 const baseUrl = (import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:3000' : '')).replace(/\/$/, '')
 
@@ -34,21 +40,58 @@ function defaultErrorMessage(code: ApiErrorCode): string {
   return messages[code]
 }
 
+const serverMessageTranslations: Record<string, string> = {
+  'Invalid credentials': 'El correo o la contraseña no son válidos.',
+  'Email is already registered': 'El correo ya está registrado.',
+  'Unit code is already registered': 'El código de unidad ya está registrado.',
+  'Unit must exist and be active': 'La unidad debe existir y estar activa.',
+  'Unit cannot be deactivated while active residents are linked to it': 'No se puede desactivar la unidad mientras tenga residentes activos.',
+  'Invalid ticket status transition': 'El cambio de estado de la incidencia no es válido.',
+  'Validation failed': 'La solicitud contiene datos no válidos.',
+}
+
+function errorMessage(payload: ApiErrorPayload, code: ApiErrorCode) {
+  if (Array.isArray(payload.message)) return defaultErrorMessage(code)
+  if (!payload.message) return defaultErrorMessage(code)
+  return serverMessageTranslations[payload.message] ?? defaultErrorMessage(code)
+}
+
 async function readErrorPayload(response: Response): Promise<ApiErrorPayload> {
   try { return await response.json() as ApiErrorPayload } catch { return {} }
 }
 
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('sigra_token')
+function shouldRetry(method: string, error: unknown) {
+  if (method !== 'GET') return false
+  return error instanceof ApiError && (error.status === 0 || error.status === 429 || error.status >= 500)
+}
+
+async function waitForRetry(attempt: number, signal?: AbortSignal) {
+  await new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(resolve, 200 * 2 ** attempt)
+    signal?.addEventListener('abort', () => {
+      window.clearTimeout(timer)
+      reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+    }, { once: true })
+  })
+}
+
+async function request<T>(path: string, options: ApiRequestOptions): Promise<T> {
+  if (options.signal?.aborted) {
+    throw options.signal.reason ?? new DOMException('Aborted', 'AbortError')
+  }
+  const { timeoutMs = 15000, retries: _retries, ...requestOptions } = options
+  const token = window.localStorage.getItem('sigra_token')
   const headers = new Headers(options.headers)
   if (!(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
   const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), 15000)
-  const abortExternalRequest = () => controller.abort()
+  const timeoutId = window.setTimeout(() => controller.abort('timeout'), timeoutMs)
+  const abortExternalRequest = () => controller.abort(options.signal?.reason)
   options.signal?.addEventListener('abort', abortExternalRequest, { once: true })
   let response: Response
-  try { response = await fetch(`${baseUrl}/api${path}`, { ...options, headers, signal: controller.signal }) } catch (error) {
+  try {
+    response = await fetch(`${baseUrl}/api${path}`, { ...requestOptions, headers, signal: controller.signal })
+  } catch (error) {
     if (options.signal?.aborted) throw error
     const code = controller.signal.aborted ? 'TIMEOUT' : 'NETWORK_ERROR'
     throw new ApiError(0, defaultErrorMessage(code), code)
@@ -59,10 +102,22 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (!response.ok) {
     const payload = await readErrorPayload(response)
     const code = errorCode(response.status)
-    const message = Array.isArray(payload.message) ? payload.message.join(' ') : payload.message ?? defaultErrorMessage(code)
+    const message = errorMessage(payload, code)
     if (response.status === 401) window.dispatchEvent(new CustomEvent('sigra:session-expired'))
     throw new ApiError(response.status, message, code, payload)
   }
   if (response.status === 204 || response.headers.get('content-length') === '0') return undefined as T
   return response.json() as Promise<T>
+}
+
+export async function api<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const retries = options.retries ?? (options.method === undefined || options.method === 'GET' ? 2 : 0)
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await request<T>(path, options)
+    } catch (error) {
+      if (attempt >= retries || !shouldRetry(options.method ?? 'GET', error)) throw error
+      await waitForRetry(attempt, options.signal ?? undefined)
+    }
+  }
 }

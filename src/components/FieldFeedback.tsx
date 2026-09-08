@@ -1,82 +1,63 @@
-// oxlint-disable react/only-export-components -- Validation handlers and the feedback component share one form-validation boundary.
-import type { FocusEvent, FormEvent, InvalidEvent, SyntheticEvent } from 'react'
+import type { FormEvent, InvalidEvent, SyntheticEvent } from 'react'
+import { ApiError } from '@/api/client'
 
-interface FieldFeedbackProps {
-  field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-  showOptional?: boolean
+type FormField = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+
+function feedbackId(field: FormField) {
+  const formId = field.form?.id || 'form'
+  const fieldId = field.id || field.name || 'field'
+  return `${formId}-${fieldId}-feedback`
 }
 
-function passwordMessage(value: string, required: boolean, minLength: number, maxLength: number) {
-  if (!value && required) return 'Este campo es obligatorio.'
-  if (!value) return 'Recomendación: use una combinación de mayúsculas, minúsculas, números y símbolos.'
-  if (value.length < minLength) return `La contraseña debe tener al menos ${minLength} caracteres.`
-  if (value.length > maxLength) return `La contraseña no puede superar los ${maxLength} caracteres.`
-  if (!/[A-ZÁÉÍÓÚÑ]/.test(value)) return 'Agregue al menos una letra mayúscula.'
-  if (!/[a-záéíóúñ]/.test(value)) return 'Agregue al menos una letra minúscula.'
-  if (!/\d/.test(value)) return 'Agregue al menos un número.'
-  if (!/[^A-Za-zÁÉÍÓÚáéíóúÑñÜü\s]/.test(value)) return 'Agregue al menos un símbolo, por ejemplo: !, @ o #.'
+function nativeValidationMessage(field: FormField) {
+  const value = field.value
+  if (field.validity.valueMissing) return field.tagName === 'SELECT' ? 'Seleccione una opción.' : 'Este campo es obligatorio.'
+  if (field.validity.typeMismatch && field instanceof HTMLInputElement && field.type === 'email') return 'Ingrese un correo electrónico válido.'
+  if (field.validity.badInput) return 'Ingrese un número válido.'
+  if (field.validity.stepMismatch) return 'Ingrese un número entero, sin decimales.'
+  if (field.validity.rangeUnderflow && field instanceof HTMLInputElement) return `El valor mínimo permitido es ${field.min}.`
+  if (field.validity.rangeOverflow && field instanceof HTMLInputElement) return `El valor máximo permitido es ${field.max}.`
+  if (field.validity.tooShort && 'minLength' in field) return `Ingrese al menos ${field.minLength} caracteres.`
+  if (field.validity.tooLong && 'maxLength' in field) return `No puede superar los ${field.maxLength} caracteres.`
+  if (field.validity.patternMismatch) return 'El formato no es válido.'
+  if (!value && field.required) return 'Este campo es obligatorio.'
   return ''
 }
 
-function emailMessage(value: string, required: boolean) {
-  if (!value && required) return 'Este campo es obligatorio.'
-  if (!value) return ''
-  if (/[ñÑ]/.test(value)) return 'El correo no puede contener la letra ñ.'
-  if (!value.includes('@')) return 'El correo debe incluir el símbolo @.'
-  if ((value.match(/@/g) ?? []).length !== 1) return 'El correo debe contener un solo símbolo @.'
-  const [local, domain] = value.split('@')
-  if (!local) return 'Ingrese la parte del correo anterior al símbolo @.'
-  if (!domain) return 'Ingrese el dominio después del símbolo @.'
-  if (!domain.includes('.')) return 'El dominio debe incluir un punto, por ejemplo: correo.com.'
-  if (domain.startsWith('.') || domain.endsWith('.')) return 'El dominio no puede comenzar ni terminar con un punto.'
-  if (domain.includes('..') || local.includes('..')) return 'El correo no puede contener puntos consecutivos.'
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)) return 'Revise el formato: ejemplo@correo.com.'
-  return ''
+function confirmationMessage(field: FormField) {
+  if (!(field instanceof HTMLInputElement) || field.name !== 'confirmation' || !field.value) return ''
+  const password = field.form?.elements.namedItem('password')
+  return password instanceof HTMLInputElement && field.value !== password.value ? 'Las contraseñas no coinciden.' : ''
 }
 
-export function validationMessage(field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) {
-  const value = field.value.trim()
-  const required = field.required
-  const minLength = 'minLength' in field && field.minLength > 0 ? field.minLength : 8
-  const maxLength = 'maxLength' in field && field.maxLength > 0 ? field.maxLength : 72
-  if (field.name === 'parkingSpaces' && 'min' in field) field.min = '1'
-  if (field.type === 'email') return emailMessage(value, required)
-  if (field.type === 'password') return field.autocomplete === 'current-password' ? (!field.value && required ? 'Este campo es obligatorio.' : '') : passwordMessage(field.value, required, minLength, maxLength)
-  if (field.type === 'number') {
-    if (!value && required) return 'Este campo es obligatorio.'
-    if (!value) return ''
-    if (field.validity.badInput) return 'Ingrese un número válido.'
-    if (field.name === 'parkingSpaces' && Number(value) < 1) return 'Debe registrar al menos 1 plaza de estacionamiento.'
-    if (field.validity.stepMismatch) return 'Ingrese un número entero, sin decimales.'
-    if (field.validity.rangeUnderflow && 'min' in field) return `El valor mínimo permitido es ${field.min}.`
-    if (field.validity.rangeOverflow && 'max' in field) return `El valor máximo permitido es ${field.max}.`
-  }
-  if (field.tagName === 'SELECT' && required && !value) return 'Seleccione una opción.'
-  if (!value && required) return 'Este campo es obligatorio.'
-  if (!value) return ''
-  if ('minLength' in field && field.minLength > 0 && value.length < field.minLength) return `Ingrese al menos ${field.minLength} caracteres.`
-  if ('maxLength' in field && field.maxLength > 0 && value.length > field.maxLength) return `No puede superar los ${field.maxLength} caracteres.`
-  if (field.validity.patternMismatch) return 'El formato no es válido. Siga el ejemplo mostrado.'
-  return ''
-}
-
-function updateFeedback(field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) {
-  const host = field.parentElement
-  if (!host) return
-  let message = host.querySelector<HTMLElement>('[data-validation-message]')
+function ensureFeedback(field: FormField) {
+  const host = field.closest('label') ?? field.parentElement
+  if (!host) return null
+  const id = feedbackId(field)
+  let message = document.getElementById(id)
   if (!message) {
     message = document.createElement('p')
+    message.id = id
     message.dataset.validationMessage = 'true'
     message.className = 'mt-1 text-xs text-destructive'
     message.setAttribute('aria-live', 'polite')
+    message.setAttribute('aria-atomic', 'true')
+    message.hidden = true
     host.append(message)
   }
-  const confirmation = field instanceof HTMLInputElement && field.name === 'confirmation' ? field.form?.querySelector<HTMLInputElement>('input[name="password"]') : null
-  const text = confirmation && field.value && field.value !== confirmation.value ? 'Las contraseñas no coinciden.' : validationMessage(field)
+  const describedBy = new Set((field.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean))
+  describedBy.add(id)
+  field.setAttribute('aria-describedby', [...describedBy].join(' '))
+  return message
+}
+
+function showFeedback(field: FormField, override?: string) {
+  const message = ensureFeedback(field)
+  if (!message) return
+  const text = override ?? (confirmationMessage(field) || nativeValidationMessage(field))
   message.textContent = text
   message.hidden = !text
   field.setAttribute('aria-invalid', String(Boolean(text)))
-  field.setCustomValidity(text)
 }
 
 function fieldFromEvent(event: SyntheticEvent<HTMLFormElement>) {
@@ -84,19 +65,78 @@ function fieldFromEvent(event: SyntheticEvent<HTMLFormElement>) {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement ? target : null
 }
 
-export function validateFieldOnInput(event: FormEvent<HTMLFormElement>) { const field = fieldFromEvent(event); if (field) { updateFeedback(field); if (field instanceof HTMLInputElement && field.name === 'password') { const confirmation = field.form?.querySelector<HTMLInputElement>('input[name="confirmation"]'); if (confirmation) updateFeedback(confirmation) } } }
-export function validateFieldOnFocus(event: FocusEvent<HTMLFormElement>) { const field = fieldFromEvent(event); if (field) updateFeedback(field) }
-export function validateFieldOnInvalid(event: InvalidEvent<HTMLFormElement>) { event.preventDefault(); const field = fieldFromEvent(event); if (field) updateFeedback(field) }
+export function validateFieldOnInput(event: FormEvent<HTMLFormElement>) {
+  const field = fieldFromEvent(event)
+  if (!field) return
+  if (field.dataset.serverError) {
+    delete field.dataset.serverError
+    field.setCustomValidity('')
+  }
+  showFeedback(field)
+  if (field instanceof HTMLInputElement && field.name === 'password') {
+    const confirmation = field.form?.elements.namedItem('confirmation')
+    if (confirmation instanceof HTMLInputElement && confirmation.value) showFeedback(confirmation)
+  }
+}
+
+export function validateFieldOnInvalid(event: InvalidEvent<HTMLFormElement>) {
+  event.preventDefault()
+  const field = fieldFromEvent(event)
+  if (!field) return
+  showFeedback(field, field.dataset.serverError)
+  const form = field.form
+  window.requestAnimationFrame(() => {
+    const firstInvalid = form?.querySelector<FormField>(':invalid')
+    ;(firstInvalid ?? field).focus()
+  })
+}
+
+export function validateForm(form: HTMLFormElement) {
+  const confirmation = form.elements.namedItem('confirmation')
+  if (confirmation instanceof HTMLInputElement) {
+    const message = confirmationMessage(confirmation)
+    confirmation.setCustomValidity(message)
+    if (message) showFeedback(confirmation, message)
+  }
+  const valid = form.checkValidity()
+  if (!valid) {
+    const firstInvalid = form.querySelector<FormField>(':invalid')
+    firstInvalid?.focus()
+  }
+  return valid
+}
+
+function localizeServerMessage(field: FormField, messages: string | string[]) {
+  const value = Array.isArray(messages) ? messages.join(' ') : messages
+  const minimum = value.match(/must be longer than or equal to (\d+)/)
+  if (minimum) return `Ingrese al menos ${minimum[1]} caracteres.`
+  const maximum = value.match(/must be shorter than or equal to (\d+)/)
+  if (maximum) return `No puede superar los ${maximum[1]} caracteres.`
+  if (value.includes('must be an email')) return 'Ingrese un correo electrónico válido.'
+  if (value.includes('must be a UUID')) return 'Seleccione una opción válida.'
+  if (value.includes('must be an integer')) return 'Ingrese un número entero, sin decimales.'
+  if (value.includes('must not be less than')) return field instanceof HTMLInputElement ? `El valor mínimo permitido es ${field.min}.` : 'El valor es menor que el permitido.'
+  if (value.includes('must not be greater than')) return field instanceof HTMLInputElement ? `El valor máximo permitido es ${field.max}.` : 'El valor supera el máximo permitido.'
+  return 'Revise este campo.'
+}
+
+export function applyApiFieldErrors(form: HTMLFormElement, error: unknown) {
+  if (!(error instanceof ApiError) || !error.details) return false
+  let firstField: FormField | null = null
+  for (const [path, messages] of Object.entries(error.details)) {
+    const name = path.split('.').at(-1)
+    if (!name) continue
+    const field = form.elements.namedItem(name)
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) continue
+    const message = localizeServerMessage(field, messages)
+    field.dataset.serverError = message
+    field.setCustomValidity(message)
+    showFeedback(field, message)
+    firstField ??= field
+  }
+  firstField?.focus()
+  return firstField !== null
+}
 
 export function setSpanishValidationMessage(event: InvalidEvent<HTMLFormElement>) { validateFieldOnInvalid(event) }
-export function clearSpanishValidationMessage(event: SyntheticEvent<HTMLFormElement>) {
-  const field = event.target
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) updateFeedback(field)
-}
-
-export function FieldFeedback({ field, showOptional = false }: FieldFeedbackProps) {
-  const message = validationMessage(field)
-  if (!message && !showOptional) return null
-  return <p className={`mt-1 text-xs ${message ? 'text-destructive' : 'text-muted-foreground'}`} aria-live="polite">{message || 'Campo opcional.'}</p>
-}
-
+export function clearSpanishValidationMessage(event: SyntheticEvent<HTMLFormElement>) { validateFieldOnInput(event as FormEvent<HTMLFormElement>) }
