@@ -15,6 +15,8 @@ const CSRF_STORAGE_KEY = 'sigra_csrf'
 let accessToken: string | null = null
 let csrfToken = window.localStorage.getItem(CSRF_STORAGE_KEY)
 let sessionEpoch = 0
+let sessionLineage: string | null = null
+const invalidatedLineages = new Set<string>()
 
 const baseUrl = (import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:3000' : '')).replace(/\/$/, '')
 
@@ -103,12 +105,15 @@ async function waitForRetry(attempt: number, signal?: AbortSignal) {
   })
 }
 
-function acceptSession(result: RefreshResult, broadcast = false, epoch = sessionEpoch) {
-  if (epoch !== sessionEpoch) return false
+function newSessionLineage() { return crypto.randomUUID() }
+
+function acceptSession(result: RefreshResult, broadcast = false, epoch = sessionEpoch, lineage = sessionLineage ?? newSessionLineage()) {
+  if (epoch !== sessionEpoch || invalidatedLineages.has(lineage)) return false
   accessToken = result.accessToken
   csrfToken = result.csrfToken
+  sessionLineage = lineage
   window.localStorage.setItem(CSRF_STORAGE_KEY, result.csrfToken)
-  if (broadcast) publishSession(result)
+  if (broadcast) publishSession(result, lineage)
   return true
 }
 
@@ -141,14 +146,19 @@ export function clearSession(broadcast = false) {
 
 export function invalidateSession(broadcast = true) {
   const hadSession = Boolean(accessToken || csrfToken)
+  if (sessionLineage) invalidatedLineages.add(sessionLineage)
   sessionEpoch += 1
+  sessionLineage = null
   clearSession(broadcast)
   void releaseOwnedRefresh()
   if (hadSession) window.dispatchEvent(new CustomEvent('sigra:session-expired'))
 }
 
 export function shareSession() {
-  if (accessToken && csrfToken) publishSession({ accessToken, csrfToken })
+  if (accessToken && csrfToken) {
+    sessionLineage ??= newSessionLineage()
+    publishSession({ accessToken, csrfToken }, sessionLineage)
+  }
 }
 
 function expireSession(broadcast = true) {
@@ -157,8 +167,9 @@ function expireSession(broadcast = true) {
 
 subscribeToSessionMessages((message) => {
   if (message.type === 'session-established' || message.type === 'refresh-succeeded') {
-    acceptSession(message.result)
-    window.dispatchEvent(new CustomEvent('sigra:session-updated'))
+    if (acceptSession(message.result, false, sessionEpoch, message.sessionLineage)) {
+      window.dispatchEvent(new CustomEvent('sigra:session-updated'))
+    }
   } else if (message.type === 'session-ended') {
     expireSession(false)
   } else if (message.type === 'session-available') {
@@ -197,6 +208,7 @@ function isRefreshExcluded(path: string) { return refreshExcludedPaths.has(path.
 
 async function refreshAccessToken(): Promise<RefreshResult> {
   const epoch = sessionEpoch
+  const lineage = sessionLineage ?? newSessionLineage()
   if (!csrfToken) throw new ApiError(401, defaultErrorMessage('UNAUTHORIZED'), 'UNAUTHORIZED')
   const result = await coordinateRefresh(async (operationId) => {
     const response = await fetchResponse('/auth/refresh', {
@@ -206,9 +218,9 @@ async function refreshAccessToken(): Promise<RefreshResult> {
     })
     if (!response.ok) throw await responseError(response)
     const result = await readSessionResult(response)
-    if (!acceptSession(result, false, epoch)) throw invalidSessionResponse()
+    if (!acceptSession(result, false, epoch, lineage)) throw invalidSessionResponse()
     return result
-  })
+  }, lineage)
   if (epoch !== sessionEpoch) throw invalidSessionResponse()
   return result
 }

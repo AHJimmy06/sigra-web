@@ -19,10 +19,10 @@ interface AcquiredLease {
 }
 
 type SessionMessage =
-  | { type: 'refresh-succeeded'; operationId: string; result: RefreshResult; expiresAt: number }
+  | { type: 'refresh-succeeded'; operationId: string; result: RefreshResult; expiresAt: number; sessionLineage: string }
   | { type: 'refresh-failed'; operationId: string }
   | { type: 'refresh-result-request'; operationId: string }
-  | { type: 'session-established'; result: RefreshResult }
+  | { type: 'session-established'; result: RefreshResult; sessionLineage: string }
   | { type: 'session-available' }
   | { type: 'session-ended' }
 
@@ -204,7 +204,7 @@ function waitForOwner(lease: Lease): Promise<RefreshResult | null> {
   })
 }
 
-export function coordinateRefresh(refresh: (operationId: string) => Promise<RefreshResult>): Promise<RefreshResult> {
+export function coordinateRefresh(refresh: (operationId: string) => Promise<RefreshResult>, sessionLineage = crypto.randomUUID()): Promise<RefreshResult> {
   if (inFlight) return inFlight
   inFlight = (async () => {
     for (;;) {
@@ -219,7 +219,7 @@ export function coordinateRefresh(refresh: (operationId: string) => Promise<Refr
       try {
         const result = await refresh(lease.operationId)
         const expiresAt = retainResult(lease.operationId, result)
-        publish({ type: 'refresh-succeeded', operationId: lease.operationId, result, expiresAt })
+        publish({ type: 'refresh-succeeded', operationId: lease.operationId, result, expiresAt, sessionLineage })
         return result
       } catch (error) {
         publish({ type: 'refresh-failed', operationId: lease.operationId })
@@ -248,5 +248,5 @@ export const __refreshCoordinatorTesting = {
   retainedResultCount: () => retainedResults.size,
 }
 
-export function publishSession(result: RefreshResult) { publish({ type: 'session-established', result }) }
+export function publishSession(result: RefreshResult, sessionLineage = crypto.randomUUID()) { publish({ type: 'session-established', result, sessionLineage }) }
 export function publishLogout() { publish({ type: 'session-ended' }) }

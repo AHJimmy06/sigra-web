@@ -151,3 +151,37 @@ Before production changes, `npx vitest run src/auth/AuthContext.spec.tsx src/App
 ### Scope and Deviations
 
 None — the implementation matches the design. `src/pages/LoginPage.tsx` did not require changes. The client calls an ownership-checked coordinator release on invalidation; the coordinator remains fail-safe because its normal `finally` release repeats the same owner/operation fence.
+
+### Focused Correction: Work Unit 3 Cross-Tab Success Causal Fence
+
+**Mode**: Standard (strict TDD disabled); test-first correction
+**Delivery strategy**: `exception-ok` (maintainer-approved size exception)
+**Chain strategy**: `feature-branch-chain`
+**Intended PR boundary**: Child PR #3 targets the immediate PR #2 branch, never `main`.
+
+#### Root Cause and Correction
+
+`acceptSession` evaluated its default `sessionEpoch` when a coordination message was delivered, so a pre-invalidation `refresh-succeeded` or `session-established` message could pass the fence after invalidation. Session publication now carries a generated causal lineage. Invalidation records the active lineage as rejected; delivery accepts a success only when its lineage is not invalidated, then dispatches `sigra:session-updated`. A later establishment with a new lineage remains valid.
+
+#### Test-First Evidence
+
+Before production changes, `npx vitest run src/api/client.spec.ts` failed the new deterministic cross-tab test: two stale success messages each dispatched `sigra:session-updated` after invalidation. The test then proved GREEN by delivering both stale `session-established` and `refresh-succeeded` messages and asserting that bearer, CSRF, and update-event state remained invalidated, followed by a new-lineage establishment that restored the valid session.
+
+#### Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test command | `npx vitest run src/api/client.spec.ts`: passed — 1 file, 24 tests. |
+| Runtime harness command/scenario | N/A — the deterministic controlled `BroadcastChannel` substitute exercises message publication and delayed delivery; no real-browser multi-tab E2E harness exists, and no E2E coverage is claimed. |
+| Rollback boundary | Revert `src/api/client.ts`, `src/auth/refreshCoordinator.ts`, `src/api/client.spec.ts`, and this correction metadata. This removes only cross-tab causal lineage fencing without affecting API, recovery, Mobile, parent artifacts, or unrelated documentation. |
+
+#### Verification
+
+- `npx vitest run src/api/client.spec.ts`: passed — 1 file, 24 tests.
+- `npx vitest run src/auth/refreshCoordinator.spec.ts`: passed — 1 file, 10 tests.
+- `npx vitest run src/auth/AuthContext.spec.tsx src/App.spec.tsx`: passed — 2 files, 13 tests.
+- `npm run lint`: passed — exit 0 with no diagnostics.
+
+#### Task State
+
+No task checkboxes changed: this is a focused correction to already-completed Work Unit 3 behavior and does not claim completion for unrelated pending tasks.

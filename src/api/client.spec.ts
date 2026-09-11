@@ -162,6 +162,50 @@ describe('API client session lifecycle', () => {
     expect(setItem.mock.calls).toEqual([['sigra_csrf', 'csrf-one']])
     expect([...Array(window.localStorage.length)].map((_, index) => window.localStorage.key(index))).not.toContain('sigra_token')
   })
+
+  it('rejects stale cross-tab session successes after invalidation but accepts a newer lineage', async () => {
+    class ControlledBroadcastChannel {
+      static instances: ControlledBroadcastChannel[] = []
+      messages: unknown[] = []
+      private listener?: (event: MessageEvent) => void
+      constructor(_name: string) { ControlledBroadcastChannel.instances.push(this) }
+      addEventListener(_type: string, listener: (event: MessageEvent) => void) { this.listener = listener }
+      postMessage(message: unknown) { this.messages.push(message) }
+      deliver(message: unknown) { this.listener?.(new MessageEvent('message', { data: message })) }
+      close() {}
+    }
+    vi.stubGlobal('BroadcastChannel', ControlledBroadcastChannel)
+    vi.resetModules()
+    const client = await import('./client')
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    fetchMock.mockResolvedValueOnce(json({ accessToken: 'old-access' }, 200, { 'X-CSRF-Token': 'csrf-one' }))
+    await client.api('/auth/login', { method: 'POST', body: '{}', retries: 0 })
+    client.shareSession()
+    const channel = ControlledBroadcastChannel.instances[0]
+    const staleLineage = (channel.messages.find((message) => (message as { type?: string }).type === 'session-established') as { sessionLineage: string }).sessionLineage
+    const updated = vi.fn()
+    window.addEventListener('sigra:session-updated', updated)
+
+    client.invalidateSession()
+    channel.deliver({ type: 'session-established', result: { accessToken: 'stale-access', csrfToken: 'stale-csrf' }, sessionLineage: staleLineage })
+    channel.deliver({ type: 'refresh-succeeded', operationId: 'stale-operation', result: { accessToken: 'stale-access', csrfToken: 'stale-csrf' }, expiresAt: Date.now() + 1_000, sessionLineage: staleLineage })
+
+    expect(updated).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('sigra_csrf')).toBeNull()
+    fetchMock.mockResolvedValueOnce(json({ ok: true }))
+    await client.api('/units', { retries: 0 })
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get('Authorization')).toBeNull()
+
+    channel.deliver({ type: 'session-established', result: { accessToken: 'current-access', csrfToken: 'current-csrf' }, sessionLineage: 'new-session-lineage' })
+
+    expect(updated).toHaveBeenCalledOnce()
+    expect(window.localStorage.getItem('sigra_csrf')).toBe('current-csrf')
+    fetchMock.mockResolvedValueOnce(json({ ok: true }))
+    await client.api('/units', { retries: 0 })
+    expect(new Headers(fetchMock.mock.calls[2][1]?.headers).get('Authorization')).toBe('Bearer current-access')
+    window.removeEventListener('sigra:session-updated', updated)
+    vi.unstubAllGlobals()
+  })
 })
 
 describe('API client transport behavior', () => {
