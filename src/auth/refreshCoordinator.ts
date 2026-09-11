@@ -3,6 +3,8 @@ export interface RefreshResult {
   csrfToken: string
 }
 
+type SessionLineage = ReturnType<typeof crypto.randomUUID>
+
 interface Lease {
   key: 'refresh'
   owner: string
@@ -19,10 +21,10 @@ interface AcquiredLease {
 }
 
 type SessionMessage =
-  | { type: 'refresh-succeeded'; operationId: string; result: RefreshResult; expiresAt: number; sessionLineage: string }
+  | { type: 'refresh-succeeded'; operationId: string; result: RefreshResult; expiresAt: number; sessionLineage: SessionLineage }
   | { type: 'refresh-failed'; operationId: string }
   | { type: 'refresh-result-request'; operationId: string }
-  | { type: 'session-established'; result: RefreshResult; sessionLineage: string }
+  | { type: 'session-established'; result: RefreshResult; sessionLineage: SessionLineage }
   | { type: 'session-available' }
   | { type: 'session-ended' }
 
@@ -36,7 +38,7 @@ let inFlight: Promise<RefreshResult> | null = null
 let activeLease: AcquiredLease | null = null
 let channel: BroadcastChannel | null = null
 const listeners = new Set<(message: SessionMessage) => void>()
-const retainedResults = new Map<string, { result: RefreshResult; expiresAt: number; sessionLineage: string }>()
+const retainedResults = new Map<string, { result: RefreshResult; expiresAt: number; sessionLineage: SessionLineage }>()
 const retainedResultTimers = new Map<string, number>()
 
 function dispatch(message: SessionMessage) {
@@ -44,7 +46,7 @@ function dispatch(message: SessionMessage) {
   for (const listener of listeners) listener(message)
 }
 
-function retainResult(operationId: string, result: RefreshResult, sessionLineage: string) {
+function retainResult(operationId: string, result: RefreshResult, sessionLineage: SessionLineage) {
   const expiresAt = Date.now() + RESULT_RETENTION_MS
   retainedResults.set(operationId, { result, expiresAt, sessionLineage })
   window.clearTimeout(retainedResultTimers.get(operationId))

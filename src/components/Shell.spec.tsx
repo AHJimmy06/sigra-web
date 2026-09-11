@@ -8,7 +8,7 @@ vi.mock('@/auth/AuthContext', () => ({ useAuth: vi.fn() }))
 
 describe('Shell responsive navigation', () => {
   it('keeps icon-only navigation named and exposes the default expanded state', () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }, loading: false, login: vi.fn(), logout: vi.fn() })
+    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }, loading: false, sessionError: null, login: vi.fn(), logout: vi.fn(), invalidateSession: vi.fn() })
     render(<MemoryRouter><Shell><p>Content</p></Shell></MemoryRouter>)
 
     for (const name of ['Panel', 'Residentes', 'Unidades', 'Cartelera', 'Incidencias', 'Accesos']) {
@@ -20,7 +20,7 @@ describe('Shell responsive navigation', () => {
   })
 
   it('does not expose administration links to guards', () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'guard-1', email: 'guard@example.com', role: 'GUARD', residentId: null }, loading: false, login: vi.fn(), logout: vi.fn() })
+    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'guard-1', email: 'guard@example.com', role: 'GUARD', residentId: null }, loading: false, sessionError: null, login: vi.fn(), logout: vi.fn(), invalidateSession: vi.fn() })
     render(<MemoryRouter><Shell><p>Content</p></Shell></MemoryRouter>)
 
     expect(screen.getByRole('link', { name: 'Escáner QR' })).toBeInTheDocument()
@@ -28,7 +28,7 @@ describe('Shell responsive navigation', () => {
   })
 
   it('updates the control and retains navigation names when collapsed', () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }, loading: false, login: vi.fn(), logout: vi.fn() })
+    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }, loading: false, sessionError: null, login: vi.fn(), logout: vi.fn(), invalidateSession: vi.fn() })
     render(<MemoryRouter><Shell><p>Content</p></Shell></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: 'Colapsar menú lateral' }))
 
@@ -39,7 +39,7 @@ describe('Shell responsive navigation', () => {
 
   it('keeps the responsive logout control named when its visible text is hidden', () => {
     const logout = vi.fn()
-    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }, loading: false, login: vi.fn(), logout })
+    vi.mocked(useAuth).mockReturnValue({ user: { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }, loading: false, sessionError: null, login: vi.fn(), logout, invalidateSession: vi.fn() })
     render(<MemoryRouter><Shell><p>Content</p></Shell></MemoryRouter>)
 
     const button = screen.getByRole('button', { name: 'Cerrar sesión' })

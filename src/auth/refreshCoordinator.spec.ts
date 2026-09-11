@@ -280,7 +280,7 @@ describe('cross-tab refresh coordination', () => {
     vi.stubGlobal('indexedDB', undefined)
     vi.stubGlobal('BroadcastChannel', ControlledBroadcastChannel)
     const { coordinateRefresh } = await import('./refreshCoordinator')
-    const sessionLineage = 'pre-invalidation-lineage'
+    const sessionLineage = crypto.randomUUID()
 
     await coordinateRefresh(
       vi.fn().mockResolvedValue({ accessToken: 'retained-access', csrfToken: 'retained-csrf' }),

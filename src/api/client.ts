@@ -15,7 +15,7 @@ const CSRF_STORAGE_KEY = 'sigra_csrf'
 let accessToken: string | null = null
 let csrfToken = window.localStorage.getItem(CSRF_STORAGE_KEY)
 let sessionEpoch = 0
-let sessionLineage: string | null = null
+let sessionLineage: ReturnType<typeof crypto.randomUUID> | null = null
 const invalidatedLineages = new Set<string>()
 
 const baseUrl = (import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:3000' : '')).replace(/\/$/, '')

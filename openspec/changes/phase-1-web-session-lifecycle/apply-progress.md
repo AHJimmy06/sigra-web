@@ -220,3 +220,77 @@ Before the production change, `npx vitest run src/auth/refreshCoordinator.spec.t
 #### Task State
 
 No task checkboxes changed: this is a focused correction to completed coordinator/client lineage behavior and does not claim completion for unrelated pending tasks.
+
+## Work Unit 4: Full Proof and Provenance
+
+**Mode**: Standard (strict TDD disabled)
+**Delivery strategy**: `exception-ok` (maintainer-approved size exception)
+**Chain strategy**: `feature-branch-chain`
+**Intended PR boundary**: Child PR #4 targets the immediate PR #3 branch, never `main`.
+**Runtime attempt token**: retained by the parent orchestrator as `sha256:78e5f2fac53113ff3eb9a28c288ea4972f5a09bac31290f0a7a77014baa7d045`.
+
+### Partial Verification Evidence
+
+| Command | Result |
+|---|---|
+| `npx vitest run src/api/client.spec.ts src/auth/refreshCoordinator.spec.ts src/auth/AuthContext.spec.tsx src/App.spec.tsx` | Passed — 4 files, 49 tests. |
+| `npm test` | Passed — 16 files, 98 tests. |
+| `npm run lint` | Passed — exit 0 with no diagnostics. |
+| `npm run build` | Failed — TypeScript rejected pre-existing child implementation/test typing: three `sessionLineage` arguments infer `string` where `crypto.randomUUID()` infers a UUID template literal; the coordinator spec uses a non-UUID literal; `Shell.spec.tsx` mock contexts omit `sessionError` and `invalidateSession`. |
+| `npm run validate` | Failed — lint passed, then the same `npm run build` TypeScript errors stopped validation. |
+
+### Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test command | `npx vitest run src/api/client.spec.ts src/auth/refreshCoordinator.spec.ts src/auth/AuthContext.spec.tsx src/App.spec.tsx`: passed — 4 files, 49 tests. |
+| Runtime harness command/scenario | N/A — no real-browser multi-tab E2E harness exists. Deterministic `fake-indexeddb`, controlled BroadcastChannel, storage-event, and fake-timer tests prove the IndexedDB and fallback coordination boundary separately; they do not claim real-browser multi-tab E2E coverage. |
+| Rollback boundary | Revert the uncommitted `docs/backend-phase-1.md` provenance section and this Work Unit 4 progress entry. No API files, API behavior, parent artifacts, or prior child implementation commits are included. |
+
+### Documentation Draft
+
+`docs/backend-phase-1.md` has an uncommitted Web-only provenance update that documents memory-only bearer placement, API-managed `HttpOnly` refresh cookies, readable CSRF placement, credentialed requests, IndexedDB/fallback degradation, and the absent browser multi-tab E2E harness. It explicitly excludes API implementation ownership.
+
+### Task State
+
+Tasks 3.1–3.4 remain unchecked. Required build and validation commands failed, so this work unit is partial and no documentation/metadata commit was created.
+
+### Focused Remediation: TypeScript Build Proof
+
+**Mode**: Standard (strict TDD disabled)
+**Delivery strategy**: `exception-ok` (maintainer-approved size exception)
+**Chain strategy**: `feature-branch-chain`
+**Intended PR boundary**: Child PR #4 targets the immediate PR #3 branch, never `main`.
+**Runtime attempt token**: retained by the parent orchestrator as `sha256:717d8fb940e2ad9fe525d4a85181ab16de8218a3c105a1d4d8dd4d6457fa061f`.
+**Failed evidence revision binding**: `sha256:a5afb23b8c17c416ef431e43468f4482c82dd1a689acb7defec0bc64ec276f43`.
+
+#### Root Cause and Correction
+
+TypeScript inferred `crypto.randomUUID()` as a UUID template literal while client lineage state and coordinator message fields were widened to `string`. The remediation retains the UUID template type through the client and coordinator contracts and uses a real `crypto.randomUUID()` lineage in the coordinator test. It also updates stale Shell AuthContext mocks with the required `sessionError` and `invalidateSession` fields. Runtime UUID generation remains unchanged.
+
+#### Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test command | `npx vitest run src/api/client.spec.ts src/auth/refreshCoordinator.spec.ts src/auth/AuthContext.spec.tsx src/App.spec.tsx`: passed — 4 files, 49 tests. |
+| Runtime harness command/scenario | N/A — no real-browser multi-tab E2E harness exists. Deterministic `fake-indexeddb`, controlled BroadcastChannel, storage-event, and fake-timer tests prove the IndexedDB and fallback coordination boundary separately; they do not claim real-browser multi-tab E2E coverage. |
+| Rollback boundary | Revert this remediation's UUID-template propagation in `src/api/client.ts` and `src/auth/refreshCoordinator.ts`, the coordinator and Shell test updates, `docs/backend-phase-1.md`, and the Phase 3 task/progress metadata. This does not alter API files, API behavior, parent artifacts, or previous child implementation commits. |
+
+#### Required Verification
+
+- `npx vitest run src/api/client.spec.ts src/auth/refreshCoordinator.spec.ts src/auth/AuthContext.spec.tsx src/App.spec.tsx`: passed — 4 files, 49 tests.
+- `npm test`: passed — 16 files, 98 tests.
+- `npm run lint`: passed — exit 0 with no diagnostics.
+- `npm run build`: passed — exit 0. Vite reports the pre-existing large-chunk advisory only.
+- `npm run validate`: passed — exit 0. Vite reports the same non-blocking large-chunk advisory only.
+
+#### Provenance Boundary
+
+The existing `docs/backend-phase-1.md` Web-only provenance draft is preserved. It documents the deterministic IndexedDB/fallback boundary and the absence of a browser multi-tab E2E harness without claiming browser E2E coverage. It explicitly excludes API implementation ownership. `openspec/changes/phase-1-identity-security/` remains untouched and untracked.
+
+#### Task State
+
+- [x] 3.1 Focused lifecycle verification passed after correcting only the proven TypeScript failures.
+- [x] 3.2 Full tests, lint, production build, and validation passed; deterministic coordination proof remains distinct from unavailable browser E2E.
+- [x] 3.3 Web-only provenance documentation is preserved with API ownership explicitly excluded.
+- [x] 3.4 The remediation, documentation, test mocks, tasks, and progress evidence are committed with a Conventional Commit message.

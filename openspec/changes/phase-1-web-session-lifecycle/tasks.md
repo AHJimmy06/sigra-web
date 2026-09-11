@@ -43,7 +43,7 @@ Chain strategy: feature-branch-chain
 
 ## Phase 3: Verification and Provenance
 
-- [ ] 3.1 Run `npx vitest run src/api/client.spec.ts src/auth/refreshCoordinator.spec.ts src/auth/AuthContext.spec.tsx src/App.spec.tsx` and resolve only failures attributable to this child.
-- [ ] 3.2 Run `npm test`, `npm run lint`, `npm run build`, and `npm run validate`; separate IndexedDB/fallback evidence from unavailable browser E2E proof.
-- [ ] 3.3 Update `docs/backend-phase-1.md` only to preserve accurate Web contract provenance and explicitly exclude API implementation ownership; do not edit API files or parent artifacts.
-- [ ] 3.4 Commit each work unit with a Conventional Commit message; keep tests with the behavior they prove, use feature/tracker → immediate-parent bases, and roll back child commits in reverse order.
+- [x] 3.1 Run `npx vitest run src/api/client.spec.ts src/auth/refreshCoordinator.spec.ts src/auth/AuthContext.spec.tsx src/App.spec.tsx` and resolve only failures attributable to this child.
+- [x] 3.2 Run `npm test`, `npm run lint`, `npm run build`, and `npm run validate`; separate IndexedDB/fallback evidence from unavailable browser E2E proof.
+- [x] 3.3 Update `docs/backend-phase-1.md` only to preserve accurate Web contract provenance and explicitly exclude API implementation ownership; do not edit API files or parent artifacts.
+- [x] 3.4 Commit each work unit with a Conventional Commit message; keep tests with the behavior they prove, use feature/tracker → immediate-parent bases, and roll back child commits in reverse order.

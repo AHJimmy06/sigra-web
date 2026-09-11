@@ -91,6 +91,16 @@ Reglas:
 - Poder revocar una sesión individual.
 - No devolver refresh tokens en JSON si se usan cookies seguras.
 
+#### Web session-client provenance
+
+The `phase-1-web-session-lifecycle` child validates only the Web client against this existing API contract. It does not implement, modify, or own API behavior, persistence, refresh rotation, CSRF or Origin enforcement, OpenAPI, migrations, or audits.
+
+The Web keeps bearer access tokens only in module memory. Refresh credentials remain API-managed `HttpOnly` cookies that the Web never reads or persists. The Web may persist a readable `X-CSRF-Token` value for the CSRF contract, but that value is not an authentication credential. Login, refresh, and logout send browser credentials; refresh and logout also send `X-CSRF-Token`, and refresh sends `X-Refresh-Operation-Id` to correlate coordinated attempts.
+
+When IndexedDB is available, the Web client uses an ownership-checked refresh lease and bounded retained results. Deterministic tests exercise that IndexedDB path and the degraded fallback. Without IndexedDB or BroadcastChannel, same-tab single-flight remains guaranteed, but cross-tab exactly-once refresh and result delivery are not guaranteed; a refresh may be repeated after the bounded lease timeout. Fallback storage contains only coordination metadata, never bearer, CSRF, or refresh credentials.
+
+No real-browser multi-tab E2E harness exists for this change. The deterministic `fake-indexeddb`, controlled BroadcastChannel, storage-event, and fake-timer tests are evidence for the client coordination boundary, not a claim of real-browser multi-tab E2E coverage.
+
 ### Cerrar sesión
 
 `POST /api/auth/logout`
