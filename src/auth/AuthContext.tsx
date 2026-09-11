@@ -1,40 +1,94 @@
 // oxlint-disable react/only-export-components -- The provider and hook form one public auth boundary.
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { ApiError, api, type SessionUser } from '@/api/client'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { api, invalidateSession as invalidateClientSession, logoutSession, restoreSession, shareSession, type SessionUser } from '@/api/client'
 
-interface AuthContextValue { user: SessionUser | null; loading: boolean; login(email: string, password: string): Promise<void>; logout(): void }
+interface AuthContextValue { user: SessionUser | null; loading: boolean; sessionError: string | null; login(email: string, password: string): Promise<void>; logout(): Promise<void>; invalidateSession(message: string): void }
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null)
-  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem('sigra_token')))
+  const [loading, setLoading] = useState(true)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const identityGeneration = useRef(0)
+  const isSupportedUser = (candidate: SessionUser) => candidate.role === 'ADMIN' || candidate.role === 'GUARD'
+  function invalidateLocal(message: string) {
+    identityGeneration.current += 1
+    setUser(null)
+    setLoading(false)
+    setSessionError(message)
+  }
+  function invalidateSession(message: string) {
+    invalidateClientSession()
+    invalidateLocal(message)
+  }
+  function commitIdentity(candidate: SessionUser, generation: number) {
+    if (generation !== identityGeneration.current) return
+    if (!isSupportedUser(candidate)) {
+      invalidateSession('Unsupported session role.')
+      return
+    }
+    setUser(candidate)
+    setSessionError(null)
+  }
   useEffect(() => {
-    if (!localStorage.getItem('sigra_token')) return
-    api<SessionUser>('/auth/me').then((sessionUser) => {
-      if (sessionUser.role === 'RESIDENT') {
-        localStorage.removeItem('sigra_token')
-        setUser(null)
-        return
-      }
-      setUser(sessionUser)
-    }).catch((error: unknown) => { if (error instanceof ApiError && error.status === 401) localStorage.removeItem('sigra_token') }).finally(() => setLoading(false))
+    const generation = identityGeneration.current
+    restoreSession().then((sessionUser) => {
+      commitIdentity(sessionUser, generation)
+    }).catch(() => {
+      if (generation === identityGeneration.current) invalidateLocal('Session ended or could not be restored.')
+    }).finally(() => {
+      if (generation === identityGeneration.current) setLoading(false)
+    })
   }, [])
   useEffect(() => {
-    const handleSessionExpired = () => { localStorage.removeItem('sigra_token'); setUser(null) }
+    const handleSessionExpired = () => invalidateLocal('Session ended or could not be restored.')
+    const handleSessionUpdated = () => {
+      const generation = ++identityGeneration.current
+      setLoading(true)
+      api<SessionUser>('/auth/me', { retries: 0 }).then((sessionUser) => {
+        commitIdentity(sessionUser, generation)
+      }).catch(() => {
+        if (generation === identityGeneration.current) invalidateLocal('Session ended or could not be restored.')
+      }).finally(() => {
+        if (generation === identityGeneration.current) setLoading(false)
+      })
+    }
+    const handleSessionAvailable = () => {
+      const generation = ++identityGeneration.current
+      setLoading(true)
+      restoreSession().then((sessionUser) => {
+        commitIdentity(sessionUser, generation)
+      }).catch(() => {
+        if (generation === identityGeneration.current) invalidateLocal('Session ended or could not be restored.')
+      }).finally(() => {
+        if (generation === identityGeneration.current) setLoading(false)
+      })
+    }
     window.addEventListener('sigra:session-expired', handleSessionExpired)
-    return () => window.removeEventListener('sigra:session-expired', handleSessionExpired)
+    window.addEventListener('sigra:session-updated', handleSessionUpdated)
+    window.addEventListener('sigra:session-available', handleSessionAvailable)
+    return () => {
+      window.removeEventListener('sigra:session-expired', handleSessionExpired)
+      window.removeEventListener('sigra:session-updated', handleSessionUpdated)
+      window.removeEventListener('sigra:session-available', handleSessionAvailable)
+    }
   }, [])
   async function login(email: string, password: string) {
-    const session = await api<{ accessToken: string; user: SessionUser }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
-    if (session.user.role === 'RESIDENT') {
-      localStorage.removeItem('sigra_token')
-      setUser(null)
-      throw new Error('El acceso para residentes aún no está disponible en la aplicación web.')
+    const generation = ++identityGeneration.current
+    await api<{ accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    const sessionUser = await api<SessionUser>('/auth/me', { retries: 0 })
+    if (generation !== identityGeneration.current) return
+    if (!isSupportedUser(sessionUser)) {
+      invalidateSession('Unsupported session role.')
+      throw new Error('Unsupported session role.')
     }
-    localStorage.setItem('sigra_token', session.accessToken)
-    setUser(session.user)
+    commitIdentity(sessionUser, generation)
+    shareSession()
   }
-  function logout() { localStorage.removeItem('sigra_token'); setUser(null) }
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>
+  async function logout() {
+    invalidateLocal('Session ended or could not be restored.')
+    await logoutSession().catch(() => undefined)
+  }
+  return <AuthContext.Provider value={{ user, loading, sessionError, login, logout, invalidateSession }}>{children}</AuthContext.Provider>
 }
 export function useAuth() { const value = useContext(AuthContext); if (!value) throw new Error('AuthProvider is missing'); return value }

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/auth/AuthContext'
 import { Shell } from '@/components/Shell'
@@ -14,6 +15,7 @@ function ProtectedApp() {
   const { user, loading } = useAuth()
   if (loading) return <div className="grid min-h-screen place-items-center text-muted-foreground">Cargando SIGRA…</div>
   if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'ADMIN' && user.role !== 'GUARD') return <UnsupportedRole />
   return (
     <Shell>
       <Routes>
@@ -28,6 +30,12 @@ function ProtectedApp() {
       </Routes>
     </Shell>
   )
+}
+
+function UnsupportedRole() {
+  const { invalidateSession } = useAuth()
+  useEffect(() => invalidateSession('Unsupported session role.'), [invalidateSession])
+  return <Navigate to="/login" replace />
 }
 
 export default function App() {

@@ -1,5 +1,5 @@
 import type { ApiErrorCode, ApiErrorPayload } from '@/api/contracts'
-import { coordinateRefresh, publishLogout, publishSession, subscribeToSessionMessages, type RefreshResult } from '@/auth/refreshCoordinator'
+import { coordinateRefresh, publishLogout, publishSession, releaseOwnedRefresh, subscribeToSessionMessages, type RefreshResult } from '@/auth/refreshCoordinator'
 
 export type Role = 'ADMIN' | 'GUARD' | 'RESIDENT'
 export interface SessionUser { sub: string; email: string; role: Role; residentId: string | null }
@@ -14,6 +14,7 @@ interface InternalRequestOptions extends ApiRequestOptions { replayed?: boolean;
 const CSRF_STORAGE_KEY = 'sigra_csrf'
 let accessToken: string | null = null
 let csrfToken = window.localStorage.getItem(CSRF_STORAGE_KEY)
+let sessionEpoch = 0
 
 const baseUrl = (import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:3000' : '')).replace(/\/$/, '')
 
@@ -102,11 +103,13 @@ async function waitForRetry(attempt: number, signal?: AbortSignal) {
   })
 }
 
-function acceptSession(result: RefreshResult, broadcast = false) {
+function acceptSession(result: RefreshResult, broadcast = false, epoch = sessionEpoch) {
+  if (epoch !== sessionEpoch) return false
   accessToken = result.accessToken
   csrfToken = result.csrfToken
   window.localStorage.setItem(CSRF_STORAGE_KEY, result.csrfToken)
   if (broadcast) publishSession(result)
+  return true
 }
 
 function invalidSessionResponse(): ApiError {
@@ -136,14 +139,20 @@ export function clearSession(broadcast = false) {
   if (broadcast) publishLogout()
 }
 
+export function invalidateSession(broadcast = true) {
+  const hadSession = Boolean(accessToken || csrfToken)
+  sessionEpoch += 1
+  clearSession(broadcast)
+  void releaseOwnedRefresh()
+  if (hadSession) window.dispatchEvent(new CustomEvent('sigra:session-expired'))
+}
+
 export function shareSession() {
   if (accessToken && csrfToken) publishSession({ accessToken, csrfToken })
 }
 
 function expireSession(broadcast = true) {
-  const hadSession = Boolean(accessToken || csrfToken)
-  clearSession(broadcast)
-  if (hadSession) window.dispatchEvent(new CustomEvent('sigra:session-expired'))
+  invalidateSession(broadcast)
 }
 
 subscribeToSessionMessages((message) => {
@@ -187,8 +196,9 @@ const refreshExcludedPaths = new Set(['/auth/login', '/auth/refresh', '/auth/log
 function isRefreshExcluded(path: string) { return refreshExcludedPaths.has(path.split('?')[0]) }
 
 async function refreshAccessToken(): Promise<RefreshResult> {
+  const epoch = sessionEpoch
   if (!csrfToken) throw new ApiError(401, defaultErrorMessage('UNAUTHORIZED'), 'UNAUTHORIZED')
-  return coordinateRefresh(async (operationId) => {
+  const result = await coordinateRefresh(async (operationId) => {
     const response = await fetchResponse('/auth/refresh', {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrfToken!, 'X-Refresh-Operation-Id': operationId },
@@ -196,9 +206,11 @@ async function refreshAccessToken(): Promise<RefreshResult> {
     })
     if (!response.ok) throw await responseError(response)
     const result = await readSessionResult(response)
-    acceptSession(result)
+    if (!acceptSession(result, false, epoch)) throw invalidSessionResponse()
     return result
   })
+  if (epoch !== sessionEpoch) throw invalidSessionResponse()
+  return result
 }
 
 async function responseError(response: Response) {
@@ -259,9 +271,12 @@ export async function api<T>(path: string, options: ApiRequestOptions = {}): Pro
 }
 
 export async function restoreSession(): Promise<SessionUser> {
+  const epoch = sessionEpoch
   try {
     await refreshAccessToken()
-    return await api<SessionUser>('/auth/me', { retries: 0 })
+    const user = await api<SessionUser>('/auth/me', { retries: 0 })
+    if (epoch !== sessionEpoch) throw invalidSessionResponse()
+    return user
   } catch (error) {
     expireSession()
     throw error
@@ -269,9 +284,7 @@ export async function restoreSession(): Promise<SessionUser> {
 }
 
 export async function logoutSession(): Promise<void> {
-  try {
-    await request('/auth/logout', { method: 'POST', headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {}, skipRefresh: true })
-  } finally {
-    expireSession()
-  }
+  const logoutCsrf = csrfToken
+  invalidateSession()
+  await request('/auth/logout', { method: 'POST', headers: logoutCsrf ? { 'X-CSRF-Token': logoutCsrf } : {}, skipRefresh: true })
 }

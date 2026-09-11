@@ -115,3 +115,39 @@ None — implementation matches the coordinator design. `fake-indexeddb` is adde
 #### Task State
 
 No task checkboxes changed: this is a focused correction to already-completed task 2.2 and does not claim completion for unrelated pending work.
+
+## Work Unit 3: Auth Races, Cleanup, and Routing
+
+**Mode**: Standard (strict TDD disabled; RED→GREEN followed)
+**Delivery strategy**: `exception-ok` (maintainer-approved size exception)
+**Chain strategy**: `feature-branch-chain`
+**Intended PR boundary**: Child PR #3 targets the immediate PR #2 branch, never `main`.
+
+### Completed Tasks
+
+- [x] 1.3 Add RED AuthContext tests for logout/expiry races, stale `/auth/me`, bootstrap cleanup, and session-error visibility.
+- [x] 1.4 Add the ADMIN/GUARD/signed-out/unsupported-role routing matrix tests.
+- [x] 2.1 (remaining auth/routing subset) Add client epoch fencing and centralized invalidation with safe owned-coordination release.
+- [x] 2.3 Add AuthContext identity generations, fail-closed session-error state, supported-role validation, and unsupported-role routing cleanup.
+
+### Test-First Evidence
+
+Before production changes, `npx vitest run src/auth/AuthContext.spec.tsx src/App.spec.tsx` failed the new bootstrap-after-logout, stale `/auth/me`-after-expiry, and bootstrap-error-visibility cases. The new role-matrix cases were added before production routing changes; existing tests already proved ADMIN and GUARD allowed/denied paths.
+
+### Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test command | `npx vitest run src/auth/AuthContext.spec.tsx src/App.spec.tsx`: passed — 2 files, 13 tests. |
+| Runtime harness command/scenario | N/A — Testing Library/jsdom deterministically exercises bootstrap, logout/expiry events, stale promise completion, and React Router role outcomes; no real-browser multi-tab E2E harness exists, and no E2E coverage is claimed. |
+| Rollback boundary | Revert `src/api/client.ts`, `src/auth/refreshCoordinator.ts`, `src/auth/AuthContext.tsx`, `src/App.tsx`, their two focused specs, and these Unit 3 metadata entries. This removes race fencing and fail-closed routing without changing API, recovery, Mobile, parent artifacts, or the separate coordinator behavior. |
+
+### Verification
+
+- `npx vitest run src/auth/AuthContext.spec.tsx src/App.spec.tsx`: passed — 2 files, 13 tests.
+- `npx vitest run src/api/client.spec.ts`: passed — 1 file, 23 tests.
+- `npm run lint`: passed — exit 0 with no diagnostics.
+
+### Scope and Deviations
+
+None — the implementation matches the design. `src/pages/LoginPage.tsx` did not require changes. The client calls an ownership-checked coordinator release on invalidation; the coordinator remains fail-safe because its normal `finally` release repeats the same owner/operation fence.

@@ -1,44 +1,93 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api } from '@/api/client'
+import { api, logoutSession, restoreSession, shareSession } from '@/api/client'
 import { AuthProvider, useAuth } from './AuthContext'
 
 vi.mock('@/api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/api/client')>()
-  return { ...original, api: vi.fn() }
+  return { ...original, api: vi.fn(), logoutSession: vi.fn(), restoreSession: vi.fn(), shareSession: vi.fn() }
 })
 
+const admin = { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN' as const, residentId: null }
+
 function SessionState() {
-  const { user, loading, logout } = useAuth()
-  return <div><span>{loading ? 'loading' : user?.email ?? 'signed-out'}</span><button onClick={logout}>logout</button></div>
+  const { user, loading, login, logout, sessionError } = useAuth()
+  return <div><span>{loading ? 'loading' : user?.email ?? 'signed-out'}</span><span>{sessionError ?? 'no-error'}</span><button onClick={() => void login('admin@example.com', 'password')}>login</button><button onClick={() => void logout()}>logout</button></div>
 }
 
 describe('AuthProvider', () => {
   beforeEach(() => {
-    window.localStorage.setItem('sigra_token', 'token')
-    vi.mocked(api).mockResolvedValue({
-      sub: 'admin-1',
-      email: 'admin@example.com',
-      role: 'ADMIN',
-      residentId: null,
-    })
+    vi.clearAllMocks()
+    vi.mocked(restoreSession).mockResolvedValue(admin)
+    vi.mocked(logoutSession).mockResolvedValue()
   })
 
-  it('clears token and user through the central 401 event', async () => {
+  it('keeps protected content hidden until refresh bootstrap resolves', async () => {
+    let resolveRestore!: (user: typeof admin) => void
+    vi.mocked(restoreSession).mockReturnValue(new Promise((resolve) => { resolveRestore = resolve }))
+    render(<AuthProvider><SessionState /></AuthProvider>)
+    expect(screen.getByText('loading')).toBeInTheDocument()
+    await act(async () => resolveRestore(admin))
+    expect(await screen.findByText('admin@example.com')).toBeInTheDocument()
+  })
+
+  it('becomes signed out when bootstrap refresh fails', async () => {
+    vi.mocked(restoreSession).mockRejectedValue(new Error('offline'))
+    render(<AuthProvider><SessionState /></AuthProvider>)
+    expect(await screen.findByText('signed-out')).toBeInTheDocument()
+  })
+
+  it('initializes login identity through /auth/me', async () => {
+    vi.mocked(api).mockResolvedValueOnce({ accessToken: 'memory-only' }).mockResolvedValueOnce(admin)
     render(<AuthProvider><SessionState /></AuthProvider>)
     expect(await screen.findByText('admin@example.com')).toBeInTheDocument()
     act(() => window.dispatchEvent(new CustomEvent('sigra:session-expired')))
-    await waitFor(() => expect(screen.getByText('signed-out')).toBeInTheDocument())
-    expect(window.localStorage.getItem('sigra_token')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'login' }))
+    await waitFor(() => expect(api).toHaveBeenNthCalledWith(2, '/auth/me', { retries: 0 }))
+    expect(shareSession).toHaveBeenCalledOnce()
   })
 
-  it('logs out locally without calling an unsupported endpoint', async () => {
+  it('clears local state even when remote logout fails', async () => {
+    vi.mocked(logoutSession).mockRejectedValue(new Error('offline'))
     render(<AuthProvider><SessionState /></AuthProvider>)
     expect(await screen.findByText('admin@example.com')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'logout' }))
     await waitFor(() => expect(screen.getByText('signed-out')).toBeInTheDocument())
-    expect(window.localStorage.getItem('sigra_token')).toBeNull()
-    expect(api).toHaveBeenCalledWith('/auth/me')
-    expect(api).not.toHaveBeenCalledWith('/auth/logout', expect.anything())
+    expect(logoutSession).toHaveBeenCalledOnce()
+  })
+
+  it('fences a bootstrap completion after logout and exposes the session error', async () => {
+    let resolveRestore!: (user: typeof admin) => void
+    vi.mocked(restoreSession).mockReturnValue(new Promise((resolve) => { resolveRestore = resolve }))
+    render(<AuthProvider><SessionState /></AuthProvider>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'logout' }))
+    await act(async () => resolveRestore(admin))
+
+    expect(await screen.findByText('signed-out')).toBeInTheDocument()
+    expect(screen.getByText('Session ended or could not be restored.')).toBeInTheDocument()
+  })
+
+  it('fences stale /auth/me completion after expiry', async () => {
+    let resolveIdentity!: (user: typeof admin) => void
+    vi.mocked(restoreSession).mockResolvedValueOnce(admin)
+    vi.mocked(api).mockReturnValueOnce(new Promise((resolve) => { resolveIdentity = resolve }))
+    render(<AuthProvider><SessionState /></AuthProvider>)
+    expect(await screen.findByText('admin@example.com')).toBeInTheDocument()
+
+    act(() => window.dispatchEvent(new CustomEvent('sigra:session-updated')))
+    act(() => window.dispatchEvent(new CustomEvent('sigra:session-expired')))
+    await act(async () => resolveIdentity(admin))
+
+    expect(await screen.findByText('signed-out')).toBeInTheDocument()
+    expect(screen.getByText('Session ended or could not be restored.')).toBeInTheDocument()
+  })
+
+  it('cleans up bootstrap failure and reports a session error', async () => {
+    vi.mocked(restoreSession).mockRejectedValue(new Error('offline'))
+    render(<AuthProvider><SessionState /></AuthProvider>)
+
+    expect(await screen.findByText('signed-out')).toBeInTheDocument()
+    expect(screen.getByText('Session ended or could not be restored.')).toBeInTheDocument()
   })
 })

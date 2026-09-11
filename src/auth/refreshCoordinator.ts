@@ -33,6 +33,7 @@ const LEASE_MS = 20_000
 const RESULT_RETENTION_MS = 30_000
 const owner = crypto.randomUUID()
 let inFlight: Promise<RefreshResult> | null = null
+let activeLease: AcquiredLease | null = null
 let channel: BroadcastChannel | null = null
 const listeners = new Set<(message: SessionMessage) => void>()
 const retainedResults = new Map<string, { result: RefreshResult; expiresAt: number }>()
@@ -214,6 +215,7 @@ export function coordinateRefresh(refresh: (operationId: string) => Promise<Refr
         continue
       }
       const { lease } = acquiredLease
+      activeLease = acquiredLease
       try {
         const result = await refresh(lease.operationId)
         const expiresAt = retainResult(lease.operationId, result)
@@ -224,10 +226,16 @@ export function coordinateRefresh(refresh: (operationId: string) => Promise<Refr
         throw error
       } finally {
         await releaseLease(acquiredLease)
+        if (activeLease === acquiredLease) activeLease = null
       }
     }
   })().finally(() => { inFlight = null })
   return inFlight
+}
+
+export async function releaseOwnedRefresh() {
+  const lease = activeLease
+  if (lease) await releaseLease(lease)
 }
 
 export function subscribeToSessionMessages(listener: (message: SessionMessage) => void) {
