@@ -36,7 +36,7 @@ let inFlight: Promise<RefreshResult> | null = null
 let activeLease: AcquiredLease | null = null
 let channel: BroadcastChannel | null = null
 const listeners = new Set<(message: SessionMessage) => void>()
-const retainedResults = new Map<string, { result: RefreshResult; expiresAt: number }>()
+const retainedResults = new Map<string, { result: RefreshResult; expiresAt: number; sessionLineage: string }>()
 const retainedResultTimers = new Map<string, number>()
 
 function dispatch(message: SessionMessage) {
@@ -44,9 +44,9 @@ function dispatch(message: SessionMessage) {
   for (const listener of listeners) listener(message)
 }
 
-function retainResult(operationId: string, result: RefreshResult) {
+function retainResult(operationId: string, result: RefreshResult, sessionLineage: string) {
   const expiresAt = Date.now() + RESULT_RETENTION_MS
-  retainedResults.set(operationId, { result, expiresAt })
+  retainedResults.set(operationId, { result, expiresAt, sessionLineage })
   window.clearTimeout(retainedResultTimers.get(operationId))
   retainedResultTimers.set(operationId, window.setTimeout(() => {
     const retained = retainedResults.get(operationId)
@@ -218,7 +218,7 @@ export function coordinateRefresh(refresh: (operationId: string) => Promise<Refr
       activeLease = acquiredLease
       try {
         const result = await refresh(lease.operationId)
-        const expiresAt = retainResult(lease.operationId, result)
+        const expiresAt = retainResult(lease.operationId, result, sessionLineage)
         publish({ type: 'refresh-succeeded', operationId: lease.operationId, result, expiresAt, sessionLineage })
         return result
       } catch (error) {

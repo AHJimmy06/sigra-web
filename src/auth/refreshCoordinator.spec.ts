@@ -265,4 +265,41 @@ describe('cross-tab refresh coordination', () => {
     expect(window.localStorage.getItem('sigra_refresh_lease')).toBeNull()
     vi.useRealTimers()
   })
+
+  it('replays a retained refresh result with its original session lineage', async () => {
+    class ControlledBroadcastChannel {
+      static instances: ControlledBroadcastChannel[] = []
+      messages: unknown[] = []
+      private listener?: (event: MessageEvent) => void
+      constructor(_name: string) { ControlledBroadcastChannel.instances.push(this) }
+      addEventListener(_type: string, listener: (event: MessageEvent) => void) { this.listener = listener }
+      postMessage(message: unknown) { this.messages.push(message) }
+      deliver(message: unknown) { this.listener?.(new MessageEvent('message', { data: message })) }
+      close() {}
+    }
+    vi.stubGlobal('indexedDB', undefined)
+    vi.stubGlobal('BroadcastChannel', ControlledBroadcastChannel)
+    const { coordinateRefresh } = await import('./refreshCoordinator')
+    const sessionLineage = 'pre-invalidation-lineage'
+
+    await coordinateRefresh(
+      vi.fn().mockResolvedValue({ accessToken: 'retained-access', csrfToken: 'retained-csrf' }),
+      sessionLineage,
+    )
+
+    const channel = ControlledBroadcastChannel.instances[0]
+    const original = channel.messages.find((message) => (message as { type?: string }).type === 'refresh-succeeded') as {
+      operationId: string
+      sessionLineage: string
+    }
+    channel.deliver({ type: 'refresh-result-request', operationId: original.operationId })
+    const replay = channel.messages.at(-1) as { type: string; operationId: string; sessionLineage?: string }
+
+    expect(replay).toMatchObject({
+      type: 'refresh-succeeded',
+      operationId: original.operationId,
+      sessionLineage,
+    })
+    vi.unstubAllGlobals()
+  })
 })

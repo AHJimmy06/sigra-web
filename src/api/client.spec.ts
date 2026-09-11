@@ -206,6 +206,57 @@ describe('API client session lifecycle', () => {
     window.removeEventListener('sigra:session-updated', updated)
     vi.unstubAllGlobals()
   })
+
+  it('keeps credentials cleared when a retained pre-invalidation refresh result is replayed', async () => {
+    class ControlledBroadcastChannel {
+      static instances: ControlledBroadcastChannel[] = []
+      messages: unknown[] = []
+      private listener?: (event: MessageEvent) => void
+      constructor(_name: string) { ControlledBroadcastChannel.instances.push(this) }
+      addEventListener(_type: string, listener: (event: MessageEvent) => void) { this.listener = listener }
+      postMessage(message: unknown) { this.messages.push(message) }
+      deliver(message: unknown) { this.listener?.(new MessageEvent('message', { data: message })) }
+      close() {}
+    }
+    vi.stubGlobal('BroadcastChannel', ControlledBroadcastChannel)
+    vi.stubGlobal('indexedDB', undefined)
+    vi.resetModules()
+    const client = await import('./client')
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    fetchMock.mockResolvedValueOnce(json({ accessToken: 'old-access' }, 200, { 'X-CSRF-Token': 'csrf-one' }))
+    await client.api('/auth/login', { method: 'POST', body: '{}', retries: 0 })
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/auth/refresh')) {
+        return json({ accessToken: 'refreshed-access' }, 200, { 'X-CSRF-Token': 'refreshed-csrf' })
+      }
+      return new Headers(init?.headers).get('Authorization') === 'Bearer refreshed-access'
+        ? json({ ok: true })
+        : json({ code: 'UNAUTHORIZED' }, 401)
+    })
+    await client.api('/units', { retries: 0 })
+
+    const channel = ControlledBroadcastChannel.instances[0]
+    const original = channel.messages.find((message) => (message as { type?: string }).type === 'refresh-succeeded') as {
+      operationId: string
+      sessionLineage: string
+    }
+    const updated = vi.fn()
+    window.addEventListener('sigra:session-updated', updated)
+    client.invalidateSession()
+    channel.deliver({ type: 'refresh-result-request', operationId: original.operationId })
+    const replay = channel.messages.at(-1) as { type: string; operationId: string; sessionLineage?: string; result: { accessToken: string; csrfToken: string } }
+
+    expect(replay).toMatchObject({ type: 'refresh-succeeded', operationId: original.operationId, sessionLineage: original.sessionLineage })
+    channel.deliver(replay)
+
+    expect(updated).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('sigra_csrf')).toBeNull()
+    fetchMock.mockResolvedValueOnce(json({ ok: true }))
+    await client.api('/tickets', { retries: 0 })
+    expect(new Headers(fetchMock.mock.calls.at(-1)?.[1]?.headers).get('Authorization')).toBeNull()
+    window.removeEventListener('sigra:session-updated', updated)
+    vi.unstubAllGlobals()
+  })
 })
 
 describe('API client transport behavior', () => {

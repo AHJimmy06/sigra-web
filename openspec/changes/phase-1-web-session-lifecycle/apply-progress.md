@@ -185,3 +185,38 @@ Before production changes, `npx vitest run src/api/client.spec.ts` failed the ne
 #### Task State
 
 No task checkboxes changed: this is a focused correction to already-completed Work Unit 3 behavior and does not claim completion for unrelated pending tasks.
+
+### Focused Correction: Retained Refresh-Result Causal Lineage
+
+**Mode**: Standard (strict TDD disabled); test-first correction
+**Delivery strategy**: `exception-ok` (maintainer-approved size exception)
+**Chain strategy**: `feature-branch-chain`
+**Intended PR boundary**: Child PR #3 targets the immediate PR #2 branch, never `main`.
+**Authorization**: Maintainer-authorized additional correction after the standard gate budget was exhausted.
+**Runtime attempt token**: `sha256:1f03ba334cbc04a2d793bf983136afea00d4699a52ffd7a828a7ac1886b83c73`
+
+#### Root Cause and Correction
+
+Retained owner-tab refresh results stored only the refresh result and expiry. A later `refresh-result-request` therefore republished `refresh-succeeded` without its original causal `sessionLineage`; after invalidation, the client treated that replay as a new acceptable lineage and could restore bearer/CSRF state and emit `sigra:session-updated`. Retained result storage now records the original lineage and `publishRetainedResult` republishes the complete stored message data.
+
+#### Test-First Evidence
+
+Before the production change, `npx vitest run src/auth/refreshCoordinator.spec.ts` failed because a retained replay lacked `sessionLineage`. The integrated `npx vitest run src/api/client.spec.ts` regression also failed before replay delivery: its retained pre-invalidation replay did not carry the original lineage. GREEN proves the replay carries that lineage; the client rejects it after invalidation, keeps bearer/CSRF cleared, and emits no `sigra:session-updated` event.
+
+#### Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test command | `npx vitest run src/auth/refreshCoordinator.spec.ts`: passed — 1 file, 11 tests. `npx vitest run src/api/client.spec.ts`: passed — 1 file, 25 tests. |
+| Runtime harness command/scenario | `npx vitest run src/api/client.spec.ts`: deterministic controlled BroadcastChannel integration invalidates a session, requests and delivers a retained pre-invalidation refresh result, and proves bearer/CSRF remain cleared with no `sigra:session-updated`; passed — 1 file, 25 tests. No real-browser multi-tab E2E harness exists or is claimed. |
+| Rollback boundary | Revert `src/auth/refreshCoordinator.ts`, `src/auth/refreshCoordinator.spec.ts`, `src/api/client.spec.ts`, and this correction metadata. This removes only retained replay lineage preservation without changing API, recovery, Mobile, AuthContext, routing, docs, or parent artifacts. |
+
+#### Verification
+
+- `npx vitest run src/auth/refreshCoordinator.spec.ts`: passed — 1 file, 11 tests.
+- `npx vitest run src/api/client.spec.ts`: passed — 1 file, 25 tests.
+- `npm run lint`: passed — exit 0 with no diagnostics.
+
+#### Task State
+
+No task checkboxes changed: this is a focused correction to completed coordinator/client lineage behavior and does not claim completion for unrelated pending tasks.
