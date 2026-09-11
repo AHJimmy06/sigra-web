@@ -294,3 +294,41 @@ The existing `docs/backend-phase-1.md` Web-only provenance draft is preserved. I
 - [x] 3.2 Full tests, lint, production build, and validation passed; deterministic coordination proof remains distinct from unavailable browser E2E.
 - [x] 3.3 Web-only provenance documentation is preserved with API ownership explicitly excluded.
 - [x] 3.4 The remediation, documentation, test mocks, tasks, and progress evidence are committed with a Conventional Commit message.
+
+## Focused Remediation: Non-Bootstrap Identity Failure Cleanup
+
+**Mode**: Standard (strict TDD disabled); RED→GREEN defect correction
+**Delivery strategy**: `exception-ok` (maintainer-approved size exception)
+**Chain strategy**: `feature-branch-chain`
+**Intended PR boundary**: Child PR #4 targets the immediate PR #3 branch, never `main`.
+**Runtime attempt token**: retained by the parent orchestrator as `sha256:4194e9700974e76b8f8db9c6f78341f9ab4bc099ed6d26b9d4b5ed62920fda43`.
+**Failed evidence revision binding**: `sha256:468d3d3a7df1b50b37b308469e86e32e25e98d4ad959f1b107ea2548c8dc767a`.
+
+### Root Cause and Correction
+
+The event-driven `/auth/me` rejection cleared only React state, and the post-login `/auth/me` rejection had no cleanup. Both now call the existing `invalidateSession` boundary when their captured identity generation is current. That boundary invalidates client bearer/CSRF, fences epoch and lineage state, requests owned coordination release, and clears the React identity with the signed-out error outcome.
+
+### RED→GREEN Evidence
+
+Before the production correction, `npx vitest run src/auth/AuthContext.spec.tsx src/api/client.spec.ts` failed both new AuthContext regressions because the shared client `invalidateSession` mock had zero calls. GREEN passes both rejection paths: each invokes that boundary, removes authenticated UI, and rejects a separately pending stale `/auth/me` completion. The minimal client-level observable regression establishes a session, calls shared invalidation, then proves readable CSRF is absent and a subsequent request has no old bearer authorization header.
+
+### Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test command | `npx vitest run src/auth/AuthContext.spec.tsx src/api/client.spec.ts`: passed — 2 files, 35 tests. |
+| Runtime harness command/scenario | `npx vitest run src/auth/AuthContext.spec.tsx src/api/client.spec.ts`: Testing Library/jsdom drives event-driven and post-login `/auth/me` rejections with deferred stale identity completions; the client test observes cleared CSRF and no bearer header after shared invalidation. Passed — 2 files, 35 tests. No real-browser multi-tab E2E harness exists or is claimed. |
+| Rollback boundary | Revert `src/auth/AuthContext.tsx`, `src/auth/AuthContext.spec.tsx`, `src/api/client.spec.ts`, and this remediation entry. This removes only non-bootstrap identity rejection cleanup and its proof; it does not alter coordinator algorithms, routing, API, recovery, Mobile, parent artifacts, or `openspec/changes/phase-1-identity-security/`. |
+
+### Required Verification
+
+- `npx vitest run src/auth/AuthContext.spec.tsx src/api/client.spec.ts`: passed — 2 files, 35 tests.
+- `npx vitest run src/api/client.spec.ts src/auth/refreshCoordinator.spec.ts src/auth/AuthContext.spec.tsx src/App.spec.tsx`: passed — 4 files, 52 tests.
+- `npm test`: passed — 16 files, 101 tests.
+- `npm run lint`: passed — exit 0 with no diagnostics.
+- `npm run build`: passed — exit 0; Vite emitted only the existing non-blocking large-chunk advisory.
+- `npm run validate`: passed — exit 0; Vite emitted the same non-blocking large-chunk advisory.
+
+### Task State
+
+No task checkboxes changed: this remediation corrects failed evidence for already-complete centralized invalidation behavior and preserves the historical failed verify report.

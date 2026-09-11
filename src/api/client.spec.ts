@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, clearSession, logoutSession, restoreSession } from './client'
+import { api, clearSession, invalidateSession, logoutSession, restoreSession } from './client'
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } })
@@ -130,6 +130,17 @@ describe('API client session lifecycle', () => {
     expect(fetchMock.mock.calls[0][1]?.credentials).toBe('include')
     expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('X-CSRF-Token')).toBe('csrf-one')
     expect(window.localStorage.getItem('sigra_csrf')).toBeNull()
+  })
+
+  it('removes the old bearer and readable CSRF when shared invalidation runs', async () => {
+    await establishSession()
+    invalidateSession()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ ok: true }))
+
+    await api('/units', { retries: 0 })
+
+    expect(window.localStorage.getItem('sigra_csrf')).toBeNull()
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBeNull()
   })
 
   it.each([

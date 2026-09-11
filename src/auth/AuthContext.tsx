@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       api<SessionUser>('/auth/me', { retries: 0 }).then((sessionUser) => {
         commitIdentity(sessionUser, generation)
       }).catch(() => {
-        if (generation === identityGeneration.current) invalidateLocal('Session ended or could not be restored.')
+        if (generation === identityGeneration.current) invalidateSession('Session ended or could not be restored.')
       }).finally(() => {
         if (generation === identityGeneration.current) setLoading(false)
       })
@@ -76,7 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function login(email: string, password: string) {
     const generation = ++identityGeneration.current
     await api<{ accessToken: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
-    const sessionUser = await api<SessionUser>('/auth/me', { retries: 0 })
+    let sessionUser: SessionUser
+    try {
+      sessionUser = await api<SessionUser>('/auth/me', { retries: 0 })
+    } catch (error) {
+      if (generation === identityGeneration.current) invalidateSession('Session ended or could not be restored.')
+      throw error
+    }
     if (generation !== identityGeneration.current) return
     if (!isSupportedUser(sessionUser)) {
       invalidateSession('Unsupported session role.')
