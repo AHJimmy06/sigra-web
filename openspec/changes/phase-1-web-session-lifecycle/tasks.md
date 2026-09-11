@@ -31,14 +31,14 @@ Chain strategy: feature-branch-chain
 - [x] 1.2 Add RED tests in `src/api/client.spec.ts` for credentialed operations, malformed responses, excluded 401s, one replay, cleanup, and memory-only bearer storage.
 - [ ] 1.3 Add RED tests in `src/auth/AuthContext.spec.tsx` for logout/expiry races, stale `/auth/me`, bootstrap cleanup, and session-error visibility.
 - [ ] 1.4 Add the threat-matrix RED role tests in `src/App.spec.tsx`: ADMIN allowed/guard denied, GUARD allowed/admin denied, signed-out denied, and unsupported role invalidation.
-- [ ] 1.5 Add RED coordinator cases in `src/auth/refreshCoordinator.spec.ts` for IndexedDB leases, retained results, fencing, and fallback takeover; add `fake-indexeddb` metadata if needed.
+- [x] 1.5 Add RED coordinator cases in `src/auth/refreshCoordinator.spec.ts` for IndexedDB leases, retained results, fencing, and fallback takeover; add `fake-indexeddb` metadata if needed.
 
 ## Phase 2: Minimal Production Corrections
 
 - [ ] 2.1 Correct demonstrated gaps in `src/api/client.ts`: epoch fencing, strict validation, centralized invalidation, credentials, and bounded replay.
   - [x] Client-only contract subset: reject malformed login and refresh successes with session cleanup while preserving credentialed requests and one-replay behavior.
   - [ ] Epoch fencing and any shared invalidation work remain for the later auth/routing slice.
-- [ ] 2.2 Correct `src/auth/refreshCoordinator.ts` with operation-correlated results and atomic owner/operation-checked release while preserving secret-free fallback semantics.
+- [x] 2.2 Correct `src/auth/refreshCoordinator.ts` with operation-correlated results and atomic owner/operation-checked release while preserving secret-free fallback semantics.
 - [ ] 2.3 Correct `src/auth/AuthContext.tsx` and `src/App.tsx` (and `src/pages/LoginPage.tsx` only if required) for identity fencing, fail-closed state, safe redirects, and unsupported-role cleanup.
 
 ## Phase 3: Verification and Provenance
