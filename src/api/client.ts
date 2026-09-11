@@ -1,4 +1,5 @@
 import type { ApiErrorCode, ApiErrorPayload } from '@/api/contracts'
+import { coordinateRefresh, publishLogout, publishSession, subscribeToSessionMessages, type RefreshResult } from '@/auth/refreshCoordinator'
 
 export type Role = 'ADMIN' | 'GUARD' | 'RESIDENT'
 export interface SessionUser { sub: string; email: string; role: Role; residentId: string | null }
@@ -7,6 +8,12 @@ export interface ApiRequestOptions extends RequestInit {
   timeoutMs?: number
   retries?: number
 }
+
+interface InternalRequestOptions extends ApiRequestOptions { replayed?: boolean; skipRefresh?: boolean }
+
+const CSRF_STORAGE_KEY = 'sigra_csrf'
+let accessToken: string | null = null
+let csrfToken = window.localStorage.getItem(CSRF_STORAGE_KEY)
 
 const baseUrl = (import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:3000' : '')).replace(/\/$/, '')
 
@@ -95,22 +102,76 @@ async function waitForRetry(attempt: number, signal?: AbortSignal) {
   })
 }
 
-async function request<T>(path: string, options: ApiRequestOptions): Promise<T> {
+function acceptSession(result: RefreshResult, broadcast = false) {
+  accessToken = result.accessToken
+  csrfToken = result.csrfToken
+  window.localStorage.setItem(CSRF_STORAGE_KEY, result.csrfToken)
+  if (broadcast) publishSession(result)
+}
+
+function invalidSessionResponse(): ApiError {
+  return new ApiError(0, defaultErrorMessage('UNKNOWN_ERROR'), 'UNKNOWN_ERROR')
+}
+
+function sessionResult(body: unknown, response: Response): RefreshResult {
+  const access = typeof body === 'object' && body !== null ? (body as { accessToken?: unknown }).accessToken : undefined
+  const csrf = response.headers.get('X-CSRF-Token')
+  if (typeof access !== 'string' || !access.trim() || !csrf?.trim()) throw invalidSessionResponse()
+  return { accessToken: access, csrfToken: csrf }
+}
+
+async function readSessionResult(response: Response): Promise<RefreshResult> {
+  try {
+    return sessionResult(await response.json(), response)
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw invalidSessionResponse()
+  }
+}
+
+export function clearSession(broadcast = false) {
+  accessToken = null
+  csrfToken = null
+  window.localStorage.removeItem(CSRF_STORAGE_KEY)
+  if (broadcast) publishLogout()
+}
+
+export function shareSession() {
+  if (accessToken && csrfToken) publishSession({ accessToken, csrfToken })
+}
+
+function expireSession(broadcast = true) {
+  const hadSession = Boolean(accessToken || csrfToken)
+  clearSession(broadcast)
+  if (hadSession) window.dispatchEvent(new CustomEvent('sigra:session-expired'))
+}
+
+subscribeToSessionMessages((message) => {
+  if (message.type === 'session-established' || message.type === 'refresh-succeeded') {
+    acceptSession(message.result)
+    window.dispatchEvent(new CustomEvent('sigra:session-updated'))
+  } else if (message.type === 'session-ended') {
+    expireSession(false)
+  } else if (message.type === 'session-available') {
+    window.dispatchEvent(new CustomEvent('sigra:session-available'))
+  }
+})
+
+async function fetchResponse(path: string, options: InternalRequestOptions): Promise<Response> {
   if (options.signal?.aborted) {
     throw options.signal.reason ?? new DOMException('Aborted', 'AbortError')
   }
-  const { timeoutMs = 15000, retries: _retries, ...requestOptions } = options
-  const token = window.localStorage.getItem('sigra_token')
+  const { timeoutMs = 15000, retries: _retries, replayed: _replayed, skipRefresh: _skipRefresh, ...requestOptions } = options
   const headers = new Headers(options.headers)
   if (!(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
   const controller = new AbortController()
   const timeoutId = window.setTimeout(() => controller.abort('timeout'), timeoutMs)
   const abortExternalRequest = () => controller.abort(options.signal?.reason)
   options.signal?.addEventListener('abort', abortExternalRequest, { once: true })
   let response: Response
   try {
-    response = await fetch(`${baseUrl}/api${path}`, { ...requestOptions, headers, signal: controller.signal })
+    response = await fetch(`${baseUrl}/api${path}`, { ...requestOptions, credentials: 'include', headers, signal: controller.signal })
   } catch (error) {
     if (options.signal?.aborted) throw error
     const code = controller.signal.aborted ? 'TIMEOUT' : 'NETWORK_ERROR'
@@ -119,15 +180,70 @@ async function request<T>(path: string, options: ApiRequestOptions): Promise<T> 
     window.clearTimeout(timeoutId)
     options.signal?.removeEventListener('abort', abortExternalRequest)
   }
+  return response
+}
+
+const refreshExcludedPaths = new Set(['/auth/login', '/auth/refresh', '/auth/logout', '/auth/forgot-password', '/auth/reset-password'])
+function isRefreshExcluded(path: string) { return refreshExcludedPaths.has(path.split('?')[0]) }
+
+async function refreshAccessToken(): Promise<RefreshResult> {
+  if (!csrfToken) throw new ApiError(401, defaultErrorMessage('UNAUTHORIZED'), 'UNAUTHORIZED')
+  return coordinateRefresh(async (operationId) => {
+    const response = await fetchResponse('/auth/refresh', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken!, 'X-Refresh-Operation-Id': operationId },
+      skipRefresh: true,
+    })
+    if (!response.ok) throw await responseError(response)
+    const result = await readSessionResult(response)
+    acceptSession(result)
+    return result
+  })
+}
+
+async function responseError(response: Response) {
+  const payload = normalizedPayload(await readErrorPayload(response))
+  const code = normalizedServerCode(payload, response.status)
+  const message = errorMessage(payload, code)
+  return new ApiError(response.status, message, code, payload)
+}
+
+async function request<T>(path: string, options: InternalRequestOptions): Promise<T> {
+  let response = await fetchResponse(path, options)
+  if (response.status === 401 && accessToken && !options.replayed && !options.skipRefresh && !isRefreshExcluded(path)) {
+    try {
+      await refreshAccessToken()
+      response = await fetchResponse(path, { ...options, replayed: true })
+    } catch (error) {
+      expireSession()
+      throw error
+    }
+  }
   if (!response.ok) {
-    const payload = normalizedPayload(await readErrorPayload(response))
-    const code = normalizedServerCode(payload, response.status)
-    const message = errorMessage(payload, code)
-    if (response.status === 401) window.dispatchEvent(new CustomEvent('sigra:session-expired'))
-    throw new ApiError(response.status, message, code, payload)
+    const error = await responseError(response)
+    if (response.status === 401 && (options.replayed || (!isRefreshExcluded(path) && accessToken))) expireSession()
+    throw error
   }
   if (response.status === 204 || response.headers.get('content-length') === '0') return undefined as T
-  return response.json() as Promise<T>
+  let body: T
+  try {
+    body = await response.json() as T
+  } catch (error) {
+    if (path === '/auth/login') {
+      expireSession()
+      throw invalidSessionResponse()
+    }
+    throw error
+  }
+  if (path === '/auth/login') {
+    try {
+      acceptSession(sessionResult(body, response))
+    } catch (error) {
+      expireSession()
+      throw error
+    }
+  }
+  return body
 }
 
 export async function api<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -139,5 +255,23 @@ export async function api<T>(path: string, options: ApiRequestOptions = {}): Pro
       if (attempt >= retries || !shouldRetry(options.method ?? 'GET', error)) throw error
       await waitForRetry(attempt, options.signal ?? undefined)
     }
+  }
+}
+
+export async function restoreSession(): Promise<SessionUser> {
+  try {
+    await refreshAccessToken()
+    return await api<SessionUser>('/auth/me', { retries: 0 })
+  } catch (error) {
+    expireSession()
+    throw error
+  }
+}
+
+export async function logoutSession(): Promise<void> {
+  try {
+    await request('/auth/logout', { method: 'POST', headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {}, skipRefresh: true })
+  } finally {
+    expireSession()
   }
 }

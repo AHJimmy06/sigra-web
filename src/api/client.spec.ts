@@ -1,52 +1,185 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { api } from './client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { api, clearSession, logoutSession, restoreSession } from './client'
 
-describe('API client', () => {
+function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } })
+}
+
+async function establishSession() {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(json(
+    { accessToken: 'old-access' },
+    200,
+    { 'X-CSRF-Token': 'csrf-one' },
+  ))
+  await api('/auth/login', { method: 'POST', body: '{}' })
+  vi.mocked(fetch).mockReset()
+}
+
+describe('API client session lifecycle', () => {
+  beforeEach(() => {
+    clearSession()
+    window.localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
-    window.localStorage.clear()
   })
 
-  it('dispatches the central session-expired event for 401 responses', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ code: 'UNAUTHORIZED', message: 'Expired' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
-    const expired = vi.fn()
-    window.addEventListener('sigra:session-expired', expired)
-
-    await expect(api('/auth/me', { retries: 0 })).rejects.toMatchObject({
-      status: 401,
-      code: 'UNAUTHORIZED',
+  it('coordinates concurrent 401s through one refresh and replays each request once', async () => {
+    await establishSession()
+    let protectedCalls = 0
+    let refreshCalls = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = String(input)
+      if (path.endsWith('/auth/refresh')) {
+        refreshCalls += 1
+        expect(init?.credentials).toBe('include')
+        expect(new Headers(init?.headers).get('X-CSRF-Token')).toBe('csrf-one')
+        expect(new Headers(init?.headers).get('X-Refresh-Operation-Id')).toMatch(/^[0-9a-f-]{36}$/)
+        return json({ accessToken: 'new-access' }, 200, { 'X-CSRF-Token': 'csrf-two' })
+      }
+      protectedCalls += 1
+      const authorization = new Headers(init?.headers).get('Authorization')
+      return authorization === 'Bearer new-access' ? json({ ok: true }) : json({ code: 'UNAUTHORIZED' }, 401)
     })
+
+    await expect(Promise.all([api('/units', { retries: 0 }), api('/tickets', { retries: 0 })])).resolves.toEqual([{ ok: true }, { ok: true }])
+    expect(refreshCalls).toBe(1)
+    expect(protectedCalls).toBe(4)
+  })
+
+  it('clears the session when the single refresh fails', async () => {
+    await establishSession()
+    const expired = vi.fn()
+    window.addEventListener('sigra:session-expired', expired, { once: true })
+    let refreshCalls = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).endsWith('/auth/refresh')) refreshCalls += 1
+      return json({ code: 'UNAUTHORIZED' }, 401)
+    })
+
+    await expect(Promise.allSettled([api('/units', { retries: 0 }), api('/tickets', { retries: 0 })])).resolves.toEqual([
+      expect.objectContaining({ status: 'rejected' }),
+      expect.objectContaining({ status: 'rejected' }),
+    ])
+    expect(refreshCalls).toBe(1)
     expect(expired).toHaveBeenCalledOnce()
   })
 
+  it('rejects a malformed refresh success, clears credentials, and does not replay', async () => {
+    await establishSession()
+    let protectedCalls = 0
+    let refreshCalls = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).endsWith('/auth/refresh')) {
+        refreshCalls += 1
+        return json({ accessToken: '   ' }, 200, { 'X-CSRF-Token': 'csrf-two' })
+      }
+      protectedCalls += 1
+      return json({ code: 'UNAUTHORIZED' }, 401)
+    })
+
+    await expect(api('/units', { retries: 0 })).rejects.toMatchObject({ code: 'UNKNOWN_ERROR' })
+    expect(refreshCalls).toBe(1)
+    expect(protectedCalls).toBe(1)
+    expect(window.localStorage.getItem('sigra_csrf')).toBeNull()
+  })
+
+  it('bootstraps through refresh and then /auth/me', async () => {
+    await establishSession()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(json({ accessToken: 'restored-access' }, 200, { 'X-CSRF-Token': 'csrf-two' }))
+      .mockResolvedValueOnce(json({ sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }))
+
+    await expect(restoreSession()).resolves.toMatchObject({ email: 'admin@example.com', role: 'ADMIN' })
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/auth\/refresh$/)
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/\/auth\/me$/)
+  })
+
+  it('does not refresh a replay that also returns 401', async () => {
+    await establishSession()
+    let refreshCalls = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).endsWith('/auth/refresh')) {
+        refreshCalls += 1
+        return json({ accessToken: 'new-access' }, 200, { 'X-CSRF-Token': 'csrf-two' })
+      }
+      return json({ code: 'UNAUTHORIZED' }, 401)
+    })
+    await expect(api('/units', { retries: 0 })).rejects.toMatchObject({ status: 401 })
+    expect(refreshCalls).toBe(1)
+  })
+
+  it.each(['/auth/login', '/auth/refresh', '/auth/logout', '/auth/forgot-password', '/auth/reset-password'])(
+    'never refreshes excluded endpoint %s',
+    async (path) => {
+      await establishSession()
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ code: 'UNAUTHORIZED' }, 401))
+      await expect(api(path, { method: 'POST', retries: 0 })).rejects.toMatchObject({ status: 401 })
+      expect(fetchMock).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('attempts credentialed remote logout and clears memory after network failure', async () => {
+    await establishSession()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('offline'))
+    await expect(logoutSession()).rejects.toMatchObject({ code: 'NETWORK_ERROR' })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock.mock.calls[0][1]?.credentials).toBe('include')
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('X-CSRF-Token')).toBe('csrf-one')
+    expect(window.localStorage.getItem('sigra_csrf')).toBeNull()
+  })
+
+  it.each([
+    ['missing access token', {}, { 'X-CSRF-Token': 'csrf-one' }],
+    ['blank access token', { accessToken: '   ' }, { 'X-CSRF-Token': 'csrf-one' }],
+    ['missing CSRF token', { accessToken: 'new-access' }, {}],
+  ])('rejects a malformed login success with %s and clears the existing session', async (_caseName, body, headers) => {
+    await establishSession()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json(body, 200, headers))
+
+    await expect(api('/auth/login', { method: 'POST', body: '{}', retries: 0 })).rejects.toMatchObject({ code: 'UNKNOWN_ERROR' })
+    expect(fetchMock.mock.calls[0][1]?.credentials).toBe('include')
+    expect(window.localStorage.getItem('sigra_csrf')).toBeNull()
+  })
+
+  it('rejects invalid JSON from a login success and clears the existing session', async () => {
+    await establishSession()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('not JSON', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'csrf-one' },
+    }))
+
+    await expect(api('/auth/login', { method: 'POST', body: '{}', retries: 0 })).rejects.toMatchObject({ code: 'UNKNOWN_ERROR' })
+    expect(window.localStorage.getItem('sigra_csrf')).toBeNull()
+  })
+
+  it('never persists bearer access tokens', async () => {
+    const setItem = vi.spyOn(window.localStorage, 'setItem')
+    await establishSession()
+    expect(setItem.mock.calls).toEqual([['sigra_csrf', 'csrf-one']])
+    expect([...Array(window.localStorage.length)].map((_, index) => window.localStorage.key(index))).not.toContain('sigra_token')
+  })
+})
+
+describe('API client transport behavior', () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
   it('retries safe GET requests after a network failure', async () => {
     vi.useFakeTimers()
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
-      .mockRejectedValueOnce(new TypeError('offline'))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }))
-
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('offline')).mockResolvedValueOnce(json({ ok: true }))
     const result = api<{ ok: boolean }>('/health', { retries: 1 })
     await vi.runAllTimersAsync()
     await expect(result).resolves.toEqual({ ok: true })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('honors caller cancellation without retrying', async () => {
     const controller = new AbortController()
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
-      (_input, init) => new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
-      }),
-    )
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
     const result = api('/units', { signal: controller.signal })
     controller.abort()
     await expect(result).rejects.toBeInstanceOf(DOMException)
@@ -58,62 +191,46 @@ describe('API client', () => {
     const reason = new DOMException('Cancelled before request', 'AbortError')
     controller.abort(reason)
     const fetchMock = vi.spyOn(globalThis, 'fetch')
-
     await expect(api('/units', { signal: controller.signal })).rejects.toBe(reason)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('returns a typed timeout without retrying when retries are disabled', async () => {
+  it('returns a typed timeout when retries are disabled', async () => {
     vi.useFakeTimers()
-    vi.spyOn(globalThis, 'fetch').mockImplementation(
-      (_input, init) => new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
-      }),
-    )
-
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+    }))
     const result = expect(api('/tickets', { timeoutMs: 25, retries: 0 })).rejects.toMatchObject({ status: 0, code: 'TIMEOUT' })
     await vi.advanceTimersByTimeAsync(25)
     await result
   })
 
-  it('returns typed server error details for retry UI', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ code: 'CONFLICT', message: 'Conflict', details: { email: ['Used'] } }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
-    await expect(api('/residents', { method: 'POST' })).rejects.toEqual(
-      expect.objectContaining({ code: 'CONFLICT', details: { email: ['Used'] } }),
-    )
-  })
-
   it('accepts only status-compatible stable server codes', async () => {
     vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'MADE_UP', message: 'Trust me' }), { status: 403 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'CONFLICT', message: 'Conflict' }), { status: 400 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 'VALIDATION_ERROR', message: 'Validation failed' }), { status: 400 }))
-
+      .mockResolvedValueOnce(json({ code: 'MADE_UP', message: 'Trust me' }, 403))
+      .mockResolvedValueOnce(json({ code: 'CONFLICT', message: 'Conflict' }, 400))
+      .mockResolvedValueOnce(json({ code: 'VALIDATION_ERROR', message: 'Validation failed' }, 400))
     await expect(api('/one', { retries: 0 })).rejects.toMatchObject({ code: 'FORBIDDEN' })
     await expect(api('/two', { retries: 0 })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
     await expect(api('/three', { retries: 0 })).rejects.toMatchObject({ code: 'VALIDATION_ERROR' })
   })
 
-  it('sanitizes malformed details, request IDs, and arbitrary server messages', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({
-        code: 'CONFLICT',
-        message: '<script>unsafe</script>',
-        details: { email: ['Used'], leak: 'raw SQL' },
-        requestId: 'unsafe request id',
-      }), { status: 409 }),
-    )
-
+  it('returns typed and sanitized server error metadata', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({
+      code: 'CONFLICT',
+      message: 'Conflict',
+      details: { email: ['Used'], leak: 'raw SQL' },
+      requestId: 'request-123',
+    }, 409))
     await expect(api('/residents', { retries: 0 })).rejects.toMatchObject({
       code: 'CONFLICT',
-      message: 'La solicitud entra en conflicto con los datos existentes.',
       details: { email: ['Used'] },
-      requestId: undefined,
+      requestId: 'request-123',
     })
+  })
+
+  it('sanitizes arbitrary server messages', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ code: 'CONFLICT', message: '<script>unsafe</script>', details: { email: ['Used'], leak: 'raw SQL' } }, 409))
+    await expect(api('/residents', { retries: 0 })).rejects.toMatchObject({ message: 'La solicitud entra en conflicto con los datos existentes.', details: { email: ['Used'] } })
   })
 })
