@@ -10,6 +10,14 @@ interface Lease {
   expiresAt: number
 }
 
+type LeaseBackend = 'indexeddb' | 'localStorage'
+
+interface AcquiredLease {
+  acquired: boolean
+  lease: Lease
+  backend: LeaseBackend
+}
+
 type SessionMessage =
   | { type: 'refresh-succeeded'; operationId: string; result: RefreshResult; expiresAt: number }
   | { type: 'refresh-failed'; operationId: string }
@@ -28,6 +36,7 @@ let inFlight: Promise<RefreshResult> | null = null
 let channel: BroadcastChannel | null = null
 const listeners = new Set<(message: SessionMessage) => void>()
 const retainedResults = new Map<string, { result: RefreshResult; expiresAt: number }>()
+const retainedResultTimers = new Map<string, number>()
 
 function dispatch(message: SessionMessage) {
   if (message.type === 'refresh-result-request') publishRetainedResult(message.operationId)
@@ -37,13 +46,25 @@ function dispatch(message: SessionMessage) {
 function retainResult(operationId: string, result: RefreshResult) {
   const expiresAt = Date.now() + RESULT_RETENTION_MS
   retainedResults.set(operationId, { result, expiresAt })
+  window.clearTimeout(retainedResultTimers.get(operationId))
+  retainedResultTimers.set(operationId, window.setTimeout(() => {
+    const retained = retainedResults.get(operationId)
+    if (retained?.expiresAt === expiresAt) retainedResults.delete(operationId)
+    retainedResultTimers.delete(operationId)
+  }, RESULT_RETENTION_MS))
   return expiresAt
+}
+
+function discardRetainedResult(operationId: string) {
+  window.clearTimeout(retainedResultTimers.get(operationId))
+  retainedResultTimers.delete(operationId)
+  retainedResults.delete(operationId)
 }
 
 function publishRetainedResult(operationId: string) {
   const retained = retainedResults.get(operationId)
   if (!retained || retained.expiresAt <= Date.now()) {
-    retainedResults.delete(operationId)
+    discardRetainedResult(operationId)
     return
   }
   getChannel()?.postMessage({ type: 'refresh-succeeded', operationId, ...retained })
@@ -88,18 +109,18 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-async function acquireIndexedDbLease(): Promise<{ acquired: boolean; lease: Lease }> {
+async function acquireIndexedDbLease(): Promise<AcquiredLease> {
   const database = await openDatabase()
   return new Promise((resolve, reject) => {
     const transaction = database.transaction('leases', 'readwrite')
     const store = transaction.objectStore('leases')
     const request = store.get('refresh')
-    let result: { acquired: boolean; lease: Lease } | undefined
+    let result: AcquiredLease | undefined
     request.onsuccess = () => {
       const existing = request.result as Lease | undefined
       const now = Date.now()
       if (existing && existing.expiresAt > now) {
-        result = { acquired: false, lease: existing }
+        result = { acquired: false, lease: existing, backend: 'indexeddb' }
         return
       }
       const lease: Lease = {
@@ -109,7 +130,7 @@ async function acquireIndexedDbLease(): Promise<{ acquired: boolean; lease: Leas
         expiresAt: now + LEASE_MS,
       }
       store.put(lease)
-      result = { acquired: true, lease }
+      result = { acquired: true, lease, backend: 'indexeddb' }
     }
     transaction.oncomplete = () => { database.close(); resolve(result!) }
     transaction.onerror = () => { database.close(); reject(transaction.error) }
@@ -131,16 +152,16 @@ async function releaseIndexedDbLease(lease: Lease): Promise<void> {
   })
 }
 
-async function acquireFallbackLease(): Promise<{ acquired: boolean; lease: Lease }> {
+async function acquireFallbackLease(): Promise<AcquiredLease> {
   const now = Date.now()
   let existing: Lease | undefined
   try { existing = JSON.parse(localStorage.getItem(LEASE_KEY) ?? '') as Lease } catch { existing = undefined }
-  if (existing && existing.expiresAt > now) return { acquired: false, lease: existing }
+  if (existing && existing.expiresAt > now) return { acquired: false, lease: existing, backend: 'localStorage' }
   const lease: Lease = { key: 'refresh', owner, operationId: crypto.randomUUID(), expiresAt: now + LEASE_MS }
   localStorage.setItem(LEASE_KEY, JSON.stringify(lease))
   await new Promise((resolve) => window.setTimeout(resolve, 25))
   const current = JSON.parse(localStorage.getItem(LEASE_KEY) ?? 'null') as Lease | null
-  return { acquired: current?.owner === owner, lease: current ?? lease }
+  return { acquired: current?.owner === owner, lease: current ?? lease, backend: 'localStorage' }
 }
 
 async function acquireLease() {
@@ -148,12 +169,10 @@ async function acquireLease() {
   try { return await acquireIndexedDbLease() } catch { return acquireFallbackLease() }
 }
 
-async function releaseLease(lease: Lease) {
-  if (typeof indexedDB !== 'undefined') {
-    try {
-      await releaseIndexedDbLease(lease)
-      return
-    } catch { /* Use the deterministic storage fallback below. */ }
+async function releaseLease({ backend, lease }: AcquiredLease) {
+  if (backend === 'indexeddb') {
+    try { await releaseIndexedDbLease(lease) } catch { /* IndexedDB cleanup cannot safely release another backend. */ }
+    return
   }
   try {
     const current = JSON.parse(localStorage.getItem(LEASE_KEY) ?? '') as Lease
@@ -188,12 +207,13 @@ export function coordinateRefresh(refresh: (operationId: string) => Promise<Refr
   if (inFlight) return inFlight
   inFlight = (async () => {
     for (;;) {
-      const { acquired, lease } = await acquireLease()
-      if (!acquired) {
-        const result = await waitForOwner(lease)
+      const acquiredLease = await acquireLease()
+      if (!acquiredLease.acquired) {
+        const result = await waitForOwner(acquiredLease.lease)
         if (result) return result
         continue
       }
+      const { lease } = acquiredLease
       try {
         const result = await refresh(lease.operationId)
         const expiresAt = retainResult(lease.operationId, result)
@@ -203,7 +223,7 @@ export function coordinateRefresh(refresh: (operationId: string) => Promise<Refr
         publish({ type: 'refresh-failed', operationId: lease.operationId })
         throw error
       } finally {
-        await releaseLease(lease)
+        await releaseLease(acquiredLease)
       }
     }
   })().finally(() => { inFlight = null })
@@ -214,6 +234,10 @@ export function subscribeToSessionMessages(listener: (message: SessionMessage) =
   getChannel()
   listeners.add(listener)
   return () => listeners.delete(listener)
+}
+
+export const __refreshCoordinatorTesting = {
+  retainedResultCount: () => retainedResults.size,
 }
 
 export function publishSession(result: RefreshResult) { publish({ type: 'session-established', result }) }

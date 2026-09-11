@@ -85,3 +85,33 @@ Same-tab single-flight remains guaranteed. Without IndexedDB or BroadcastChannel
 ### Scope and Deviations
 
 None — implementation matches the coordinator design. `fake-indexeddb` is added only as a test dependency to execute the actual IndexedDB path deterministically.
+
+### Focused Correction: Work Unit 2 Lifecycle Defects
+
+**Mode**: Standard (strict TDD disabled); test-first correction
+**Delivery strategy**: `exception-ok` (maintainer-approved size exception)
+**Chain strategy**: `feature-branch-chain`
+**Intended PR boundary**: Child PR #2 targets the immediate PR #1 branch, never `main`.
+
+#### Correction Evidence
+
+1. **Bounded retained results**: A fake-timer test first showed that the coordinator exposed no lifecycle cleanup for retained owner-tab results. Retention now schedules one operation-scoped cleanup timer, replaces any prior timer for that operation, and removes both timer and result at expiry even when no waiter requests it. Matching and expiry checks remain unchanged.
+2. **Backend-stable release**: A deterministic fallback-to-recovered-IndexedDB test first timed out under the prior release path because it attempted IndexedDB release for a lease acquired in localStorage. Acquisitions now carry their backend identity through release; localStorage leases are released with their original owner/operation fence even after IndexedDB recovers.
+
+#### Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test command | `npx vitest run src/auth/refreshCoordinator.spec.ts`: passed — 1 file, 10 tests. |
+| Runtime harness command/scenario | N/A — deterministic `fake-indexeddb`, BroadcastChannel, storage-event substitutes, and fake timers exercise the relevant browser API boundaries; no real-browser multi-tab E2E harness exists, and no E2E coverage is claimed. |
+| Rollback boundary | Revert `src/auth/refreshCoordinator.ts`, `src/auth/refreshCoordinator.spec.ts`, and this correction metadata. This removes only timer-bounded retention and backend-stable lease release without affecting API, recovery, Mobile, AuthContext, routing, docs, or parent artifacts. |
+
+#### Verification
+
+- `npx vitest run src/auth/refreshCoordinator.spec.ts`: passed — 1 file, 10 tests.
+- `npx vitest run src/api/client.spec.ts`: passed — 1 file, 23 tests.
+- `npm run lint`: passed — exit 0 with no diagnostics.
+
+#### Task State
+
+No task checkboxes changed: this is a focused correction to already-completed task 2.2 and does not claim completion for unrelated pending work.

@@ -226,4 +226,43 @@ describe('cross-tab refresh coordination', () => {
     expect(refresh).toHaveBeenCalledOnce()
     vi.useRealTimers()
   })
+
+  it('removes expired retained results with a bounded timer even without another request', async () => {
+    vi.stubGlobal('indexedDB', undefined)
+    vi.stubGlobal('BroadcastChannel', undefined)
+    vi.useFakeTimers()
+    const { __refreshCoordinatorTesting, coordinateRefresh } = await import('./refreshCoordinator')
+    const refresh = vi.fn().mockResolvedValue({ accessToken: 'retained-result', csrfToken: 'csrf' })
+    const result = coordinateRefresh(refresh)
+
+    await vi.advanceTimersByTimeAsync(25)
+    await vi.advanceTimersByTimeAsync(25)
+    await expect(result).resolves.toEqual({ accessToken: 'retained-result', csrfToken: 'csrf' })
+    expect(__refreshCoordinatorTesting.retainedResultCount()).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    expect(__refreshCoordinatorTesting.retainedResultCount()).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+  })
+
+  it('releases a fallback lease through localStorage after IndexedDB recovers', async () => {
+    vi.stubGlobal('indexedDB', { open: () => { throw new Error('IndexedDB unavailable') } })
+    vi.stubGlobal('BroadcastChannel', undefined)
+    vi.useFakeTimers()
+    let resolveRefresh!: (result: { accessToken: string; csrfToken: string }) => void
+    const { coordinateRefresh } = await import('./refreshCoordinator')
+    const result = coordinateRefresh(() => new Promise((resolve) => { resolveRefresh = resolve }))
+
+    await vi.advanceTimersByTimeAsync(25)
+    await vi.advanceTimersByTimeAsync(25)
+    expect(window.localStorage.getItem('sigra_refresh_lease')).not.toBeNull()
+    vi.stubGlobal('indexedDB', new IDBFactory())
+    resolveRefresh({ accessToken: 'fallback-result', csrfToken: 'csrf' })
+
+    await expect(result).resolves.toEqual({ accessToken: 'fallback-result', csrfToken: 'csrf' })
+    expect(window.localStorage.getItem('sigra_refresh_lease')).toBeNull()
+    vi.useRealTimers()
+  })
 })
