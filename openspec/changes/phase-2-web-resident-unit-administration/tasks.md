@@ -37,8 +37,8 @@ Chain strategy: feature-branch-chain
 
 ## Phase 3: Unit Slice (PR 3)
 
-- [ ] 3.1 **RED:** Extend `src/pages/UnitsPage.spec.tsx` for exact filters, archive/restore visibility and code reservation, independent activation, any API dependency conflict, no reassignment, cancellation, stale actions, focus, and retry.
-- [ ] 3.2 **GREEN:** Modify `src/pages/UnitsPage.tsx` to pass 3.1 with server-confirmed archive lifecycle, canonical `api()`, ownership guards, and normalized conflict errors; preserve existing behavior.
+- [x] 3.1 **RED:** Extend `src/pages/UnitsPage.spec.tsx` for exact filters, archive/restore visibility and code reservation, independent activation, any API dependency conflict, no reassignment, cancellation, stale actions, focus, and retry.
+- [x] 3.2 **GREEN:** Modify `src/pages/UnitsPage.tsx` to pass 3.1 with server-confirmed archive lifecycle, canonical `api()`, ownership guards, and normalized conflict errors; preserve existing behavior.
 
 ## Phase 4: Integration Proof (PR 4)
 

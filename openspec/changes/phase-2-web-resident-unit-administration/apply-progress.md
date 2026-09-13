@@ -40,3 +40,30 @@ PR 2 is the feature-branch-chain child based on Web parent `532ea72` / API contr
 
 Pinned API SHA: `40be73f5aa067f3088da97cc506d2517be085e96`.
 Resident archive deactivates the resident and linked user; restore requires an intact identity and active unit, then leaves both inactive. Unit archive/restore preserves `active`.
+
+## PR 3 Unit Slice
+
+### Completed Tasks
+
+- [x] 3.1 RED unit lifecycle, dependency, accessibility, retry, and ownership coverage.
+- [x] 3.2 GREEN server-confirmed unit archive/restore implementation.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 3.1 | `src/pages/UnitsPage.spec.tsx` | Component integration | 5/5 passed | 4 new lifecycle assertions failed before production code; 5 inherited assertions passed | 9/9 passed after 3.2 | Active/archive query combinations; archive/restore; dependency conflict/retry; unmount stale success | Updated inherited status selector to retain its semantic label after archive filter introduction; 9/9 stayed green |
+| 3.2 | `src/pages/UnitsPage.spec.tsx` | Component integration | 5/5 passed | Covered by 3.1 | 9/9 passed after canonical builders, independent archive controls, and owned actions | Same 4 lifecycle/race scenarios plus existing activation pagination coverage | No further production refactor needed |
+
+### PR 3 Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test | `npm test -- src/pages/UnitsPage.spec.tsx`: 1 file, 9/9 passed. RED: 4 new tests failed before production code; 5 inherited tests passed. |
+| Runtime harness | N/A: browser E2E is unavailable. The jsdom component integration harness exercised active/archive query encoding, lifecycle confirmation/focus/retry, conflict visibility, and stale unmount ownership. |
+| Build | `npm run build`: passed (`tsc -b && vite build`); Vite emitted the pre-existing >500 kB chunk-size advisory. |
+| Lint | `npm run lint`: exit 0 with the pre-existing `react(set-state-in-effect)` advisory in `src/pages/ResidentDetailPage.tsx`. |
+| Diff integrity | `git diff --check`: passed. |
+| Rollback boundary | Revert only `src/pages/UnitsPage.tsx` and `src/pages/UnitsPage.spec.tsx`; this removes unit archive/filter/action behavior without changing resident, contract, session, or integration work. |
+
+PR 3 is the `feature-branch-chain` child based on resident PR 2. Delivery is maintainer-approved `exception-ok`; this autonomous slice is unit-only and has 132 authored changed lines (114 additions, 18 deletions).

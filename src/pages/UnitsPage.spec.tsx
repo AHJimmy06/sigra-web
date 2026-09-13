@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api } from '@/api/client'
+import { ApiError, api } from '@/api/client'
 import { UnitsPage } from './UnitsPage'
 
 vi.mock('@/api/client', async (importOriginal) => {
@@ -101,7 +101,7 @@ describe('UnitsPage pagination integration', () => {
     })
     render(<UnitsPage />)
     await screen.findByText('Z-999')
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'ACTIVE' } })
+    fireEvent.change(screen.getByRole('combobox', { name: /filtrar por estado/i }), { target: { value: 'ACTIVE' } })
     fireEvent.click(await screen.findByRole('button', { name: /siguiente/i }))
     await waitFor(() => expect(api).toHaveBeenCalledWith(expect.stringContaining('page=2'), expect.anything()))
     fireEvent.click(screen.getByRole('button', { name: /desactivar/i }))
@@ -114,5 +114,69 @@ describe('UnitsPage pagination integration', () => {
     await waitFor(() => expect(screen.getByText('Mostrando 1-10 de 10')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /siguiente/i })).not.toBeInTheDocument()
     expect(api).toHaveBeenCalledWith(expect.stringMatching(/page=1.*status=true/), expect.anything())
+  })
+
+  it('keeps active and archived filters independent and exposes archived units only through the archive filter', async () => {
+    vi.mocked(api).mockResolvedValue({ items: [{ id: 'unit-1', code: 'A-101', address: 'Main Street 101', parkingSpaces: 2, active: false, archivedAt: '2026-01-01' }], total: 1, page: 1, pageSize: 10 })
+    render(<UnitsPage />)
+    await screen.findByText('A-101')
+    const [status, archive] = screen.getAllByRole('combobox')
+    fireEvent.change(status, { target: { value: 'ACTIVE' } })
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/units?page=1&pageSize=10&status=true', expect.anything()))
+    fireEvent.change(archive, { target: { value: 'ARCHIVED' } })
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/units?page=1&pageSize=10&status=true&includeArchived=true', expect.anything()))
+    expect(screen.getByRole('button', { name: /restaurar unidad/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /activar/i })).toBeInTheDocument()
+  })
+
+  it('archives and restores through pinned lifecycle paths while preserving the unit code and activation controls', async () => {
+    const unit = { id: 'unit-1', code: 'A-101', address: 'Main Street 101', parkingSpaces: 2, active: true }
+    let archived = false
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === '/units/unit-1/archive') { archived = true; return Promise.resolve({}) as never }
+      if (path === '/units/unit-1/restore') { archived = false; return Promise.resolve({}) as never }
+      return Promise.resolve({ items: [{ ...unit, archivedAt: archived ? '2026-01-01' : null }], total: 1, page: 1, pageSize: 10 }) as never
+    })
+    render(<UnitsPage />)
+    await screen.findByText('A-101')
+    fireEvent.click(screen.getByRole('button', { name: /archivar unidad/i }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: /archivar unidad/i })).getByRole('button', { name: /archivar unidad/i }))
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/units/unit-1/archive', expect.objectContaining({ method: 'POST' })))
+    expect(await screen.findByRole('button', { name: /restaurar unidad/i })).toBeInTheDocument()
+    expect(screen.getByText('A-101')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /desactivar/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /restaurar unidad/i }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: /restaurar unidad/i })).getByRole('button', { name: /restaurar unidad/i }))
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/units/unit-1/restore', expect.objectContaining({ method: 'POST' })))
+  })
+
+  it('keeps an API dependency conflict focused for retry and offers no reassignment path', async () => {
+    vi.mocked(api).mockImplementation((_path, options) => options?.method === 'POST'
+      ? Promise.reject(new ApiError(409, 'No se puede archivar la unidad porque tiene dependencias históricas.', 'CONFLICT')) as never
+      : Promise.resolve({ items: [{ id: 'unit-1', code: 'A-101', address: 'Main Street 101', parkingSpaces: 2, active: true }], total: 1, page: 1, pageSize: 10 }) as never)
+    render(<UnitsPage />)
+    await screen.findByText('A-101')
+    fireEvent.click(screen.getByRole('button', { name: /archivar unidad/i }))
+    const dialog = screen.getByRole('dialog', { name: /archivar unidad/i })
+    fireEvent.click(within(dialog).getByRole('button', { name: /archivar unidad/i }))
+    const alert = await within(dialog).findByRole('alert')
+    expect(alert).toHaveTextContent('No se puede archivar la unidad porque tiene dependencias históricas.')
+    expect(alert).toHaveFocus()
+    expect(within(dialog).getByRole('button', { name: /archivar unidad/i })).toBeEnabled()
+    expect(screen.queryByText(/reasignar/i)).not.toBeInTheDocument()
+  })
+
+  it('cancels obsolete lifecycle ownership so a late archive success cannot reload or change the dialog', async () => {
+    let resolveArchive!: () => void
+    const archive = new Promise<void>((resolve) => { resolveArchive = resolve })
+    vi.mocked(api).mockImplementation((path) => path === '/units/unit-1/archive' ? archive as never : Promise.resolve({ items: [{ id: 'unit-1', code: 'A-101', address: 'Main Street 101', parkingSpaces: 2, active: true }], total: 1, page: 1, pageSize: 10 }) as never)
+    const { unmount } = render(<UnitsPage />)
+    await screen.findByText('A-101')
+    fireEvent.click(screen.getByRole('button', { name: /archivar unidad/i }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: /archivar unidad/i })).getByRole('button', { name: /archivar unidad/i }))
+    unmount()
+    resolveArchive()
+    await Promise.resolve()
+    expect(vi.mocked(api).mock.calls.filter(([path]) => String(path).startsWith('/units?'))).toHaveLength(1)
   })
 })

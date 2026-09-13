@@ -1,8 +1,8 @@
 // oxlint-disable react/set-state-in-effect -- List state is synchronized with server query state.
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Edit, Filter, Power, Plus, Search, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Edit, Filter, Power, Plus, RotateCcw, Search, X } from 'lucide-react'
 import { api } from '@/api/client'
-import { toQueryString, type PaginatedResponse } from '@/api/contracts'
+import { unitContract, type PaginatedResponse } from '@/api/contracts'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { applyApiFieldErrors, clearSpanishValidationMessage, setSpanishValidationMessage } from '@/components/FieldFeedback'
 import { Pagination } from '@/components/Pagination'
@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/P
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 
-interface Unit { id: string; code: string; address: string; parkingSpaces: number; active: boolean }
+interface Unit { id: string; code: string; address: string; parkingSpaces: number; active: boolean; archivedAt?: string | null }
 function ModalError({ message }: { message: string }) { return message ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{message}</p> : null }
 
 export function UnitsPage() {
@@ -23,28 +23,35 @@ export function UnitsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Unit | null>(null)
   const [pendingToggle, setPendingToggle] = useState<Unit | null>(null)
+  const [pendingLifecycle, setPendingLifecycle] = useState<{ item: Unit; action: 'archive' | 'restore' } | null>(null)
   const [toggleBusy, setToggleBusy] = useState(false)
   const [toggleError, setToggleError] = useState('')
   const [createBusy, setCreateBusy] = useState(false)
   const [editBusy, setEditBusy] = useState(false)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
+  const [archiveFilter, setArchiveFilter] = useState('CURRENT')
   const [page, setPage] = useState(1)
   const [reloadVersion, setReloadVersion] = useState(0)
   const pageSize = 10
+  const listGeneration = useRef(0)
+  const actionGeneration = useRef(0)
+  const actionController = useRef<AbortController | null>(null)
 
   const load = useCallback(async (signal?: AbortSignal) => {
+    const owner = ++listGeneration.current
     setLoading(true); setError('')
     try {
-      const response = await api<PaginatedResponse<Unit>>(`/units${toQueryString({ page, pageSize, search: query.trim(), status: statusFilter === 'ALL' ? undefined : statusFilter === 'ACTIVE' })}`, { signal })
-      if (signal?.aborted) return
+      const response = await api<PaginatedResponse<Unit>>(unitContract.list({ page, pageSize, search: query.trim(), status: statusFilter === 'ALL' ? undefined : statusFilter === 'ACTIVE', includeArchived: archiveFilter === 'ARCHIVED' ? true : undefined }).path, { signal })
+      if (signal?.aborted || owner !== listGeneration.current) return
       const lastPage = Math.max(1, Math.ceil(response.total / pageSize))
       if (page > lastPage) { setPage(lastPage); return }
       setItems(response.items); setTotal(response.total)
-    } catch (value) { if (!signal?.aborted) setError(value instanceof Error ? value.message : 'No fue posible cargar las unidades.') }
-    finally { if (!signal?.aborted) setLoading(false) }
-  }, [page, query, statusFilter])
+    } catch (value) { if (!signal?.aborted && owner === listGeneration.current) setError(value instanceof Error ? value.message : 'No fue posible cargar las unidades.') }
+    finally { if (!signal?.aborted && owner === listGeneration.current) setLoading(false) }
+  }, [archiveFilter, page, query, statusFilter])
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort() }, [load, reloadVersion])
+  useEffect(() => () => { listGeneration.current += 1; actionGeneration.current += 1; actionController.current?.abort() }, [])
 
   async function save(event: FormEvent<HTMLFormElement>, item?: Unit) {
     event.preventDefault()
@@ -68,10 +75,34 @@ export function UnitsPage() {
 
   async function toggle(item: Unit) {
     if (toggleBusy) return
+    const owner = ++actionGeneration.current
+    actionController.current?.abort()
+    const controller = new AbortController()
+    actionController.current = controller
     setToggleBusy(true); setToggleError('')
-    try { await api(`/units/${item.id}`, { method: 'PATCH', body: JSON.stringify({ active: !item.active }) }); setPendingToggle(null); setReloadVersion((value) => value + 1) }
-    catch (value) { setToggleError(value instanceof Error ? value.message : `No fue posible ${item.active ? 'desactivar' : 'activar'} la unidad.`) }
-    finally { setToggleBusy(false) }
+    try { await api(unitContract.update(item.id, { active: !item.active }).path, { method: 'PATCH', body: JSON.stringify({ active: !item.active }), signal: controller.signal }); if (owner === actionGeneration.current) { setPendingToggle(null); setReloadVersion((value) => value + 1) } }
+    catch (value) { if (!controller.signal.aborted && owner === actionGeneration.current) setToggleError(value instanceof Error ? value.message : `No fue posible ${item.active ? 'desactivar' : 'activar'} la unidad.`) }
+    finally { if (owner === actionGeneration.current) setToggleBusy(false) }
+  }
+
+  async function lifecycle() {
+    if (!pendingLifecycle || toggleBusy) return
+    const { item, action } = pendingLifecycle
+    const owner = ++actionGeneration.current
+    actionController.current?.abort()
+    const controller = new AbortController()
+    actionController.current = controller
+    setToggleBusy(true); setToggleError('')
+    try { await api((action === 'archive' ? unitContract.archive(item.id) : unitContract.restore(item.id)).path, { method: 'POST', signal: controller.signal }); if (owner === actionGeneration.current) { setPendingLifecycle(null); setReloadVersion((value) => value + 1) } }
+    catch (value) { if (!controller.signal.aborted && owner === actionGeneration.current) setToggleError(value instanceof Error ? value.message : 'No fue posible actualizar el archivo de la unidad.') }
+    finally { if (owner === actionGeneration.current) setToggleBusy(false) }
+  }
+
+  function dismissAction(kind: 'toggle' | 'lifecycle') {
+    actionGeneration.current += 1
+    actionController.current?.abort()
+    if (kind === 'toggle') setPendingToggle(null); else setPendingLifecycle(null)
+    setToggleBusy(false); setToggleError('')
   }
 
   const fields = (item?: Unit) => <>
@@ -80,14 +111,15 @@ export function UnitsPage() {
     <label className="grid gap-1 text-sm font-medium">Plazas de estacionamiento <span className="font-normal text-muted-foreground">(obligatorio)</span><input name="parkingSpaces" required type="number" min="0" max="1000" step="1" inputMode="numeric" defaultValue={item?.parkingSpaces} placeholder="Ej. 2" className="rounded-lg border px-3 py-2 font-normal" /></label>
   </>
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
-  const hasFilters = Boolean(query.trim()) || statusFilter !== 'ALL'
+  const hasFilters = Boolean(query.trim()) || statusFilter !== 'ALL' || archiveFilter !== 'CURRENT'
   return <>
     <PageHeader title="Unidades residenciales" description="Gestione las direcciones, la capacidad de estacionamiento y el estado de acceso de las unidades." action={<Button onClick={() => { setCreateError(''); setModalOpen(true) }}><Plus className="size-4" />Agregar unidad</Button>} />
     {error && !pendingToggle && <ErrorState message={error} onRetry={() => void load()} />}
-    <section className="mb-6 rounded-xl border bg-card p-4" aria-label="Filtros de unidades"><div className="mb-3 flex items-center gap-2 text-sm font-medium"><Filter className="size-4" />Buscar y filtrar unidades</div><div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]"><label className="relative"><span className="sr-only">Buscar por código o dirección</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} placeholder="Ej. Torre A-101 o Calle 10" className="w-full rounded-lg border bg-background py-2 pl-9 pr-3" /></label><label><span className="sr-only">Filtrar por estado</span><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"><option value="ALL">Todos los estados</option><option value="ACTIVE">Activas</option><option value="INACTIVE">Inactivas</option></select></label></div></section>
+    <section className="mb-6 rounded-xl border bg-card p-4" aria-label="Filtros de unidades"><div className="mb-3 flex items-center gap-2 text-sm font-medium"><Filter className="size-4" />Buscar y filtrar unidades</div><div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px]"><label className="relative"><span className="sr-only">Buscar por código o dirección</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} placeholder="Ej. Torre A-101 o Calle 10" className="w-full rounded-lg border bg-background py-2 pl-9 pr-3" /></label><label><span className="sr-only">Filtrar por estado</span><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"><option value="ALL">Todos los estados</option><option value="ACTIVE">Activas</option><option value="INACTIVE">Inactivas</option></select></label><label><span className="sr-only">Filtrar archivados</span><select value={archiveFilter} onChange={(event) => { setArchiveFilter(event.target.value); setPage(1) }} className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"><option value="CURRENT">No archivadas</option><option value="ARCHIVED">Archivadas</option></select></label></div></section>
     <Modal open={modalOpen} onClose={() => setModalOpen(false)} busy={createBusy} title="Agregar unidad" description="Complete los campos obligatorios para registrar una unidad residencial."><form id="create-unit-form" onSubmit={(event) => void save(event)} onInvalid={setSpanishValidationMessage} onInput={clearSpanishValidationMessage} className="grid gap-3"><ModalError message={createError} />{fields()}<div className="flex justify-end gap-2 pt-2"><Button type="button" variant="outline" disabled={createBusy} onClick={() => setModalOpen(false)}><X className="size-4" />Cancelar</Button><Button type="submit" disabled={createBusy}><Plus className="size-4" />{createBusy ? 'Creando…' : 'Crear unidad'}</Button></div></form></Modal>
     <Modal open={Boolean(editing)} onClose={() => setEditing(null)} busy={editBusy} title="Editar unidad" description="Actualice la información administrativa de la unidad."><form id="edit-unit-form" onSubmit={(event) => { if (editing) void save(event, editing) }} onInvalid={setSpanishValidationMessage} onInput={clearSpanishValidationMessage} className="grid gap-3"><ModalError message={editError} />{fields(editing ?? undefined)}<div className="flex justify-end gap-2 pt-2"><Button type="button" variant="outline" disabled={editBusy} onClick={() => setEditing(null)}><X className="size-4" />Cancelar</Button><Button type="submit" disabled={editBusy}><Edit className="size-4" />{editBusy ? 'Guardando…' : 'Guardar cambios'}</Button></div></form></Modal>
-    {loading ? <LoadingState /> : items.length === 0 ? <EmptyState>{hasFilters ? 'No hay unidades que coincidan con los filtros seleccionados.' : 'Todavía no hay unidades registradas.'}</EmptyState> : <><div className="overflow-x-auto rounded-xl border bg-card"><table className="w-full text-left text-sm"><thead className="border-b bg-muted/50"><tr><th className="p-3">Código</th><th className="p-3">Dirección</th><th className="p-3">Estacionamiento</th><th className="p-3">Estado</th><th className="p-3 text-right"><span className="sr-only">Acciones</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-3 font-medium">{item.code}</td><td className="p-3">{item.address}</td><td className="p-3">{item.parkingSpaces.toLocaleString('es')}</td><td className="p-3">{item.active ? 'Activa' : 'Inactiva'}</td><td className="flex justify-end gap-2 p-3"><Button variant="outline" size="sm" aria-label={`Editar unidad ${item.code}`} onClick={() => { setEditError(''); setEditing(item) }}><Edit className="size-4" />Editar</Button><Button variant="outline" size="sm" onClick={() => { setToggleError(''); setPendingToggle(item) }}><Power className="size-4" />{item.active ? 'Desactivar' : 'Activar'}</Button></td></tr>)}</tbody></table></div><Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPageChange={setPage} /></>}
-    <ConfirmDialog open={Boolean(pendingToggle)} onCancel={() => setPendingToggle(null)} onConfirm={() => { if (pendingToggle) void toggle(pendingToggle) }} busy={toggleBusy} error={toggleError} title={pendingToggle?.active ? 'Desactivar unidad' : 'Activar unidad'} description={pendingToggle ? `¿Desea ${pendingToggle.active ? 'desactivar' : 'activar'} la unidad ${pendingToggle.code}?` : ''} confirmLabel={pendingToggle?.active ? 'Desactivar unidad' : 'Activar unidad'} destructive={pendingToggle?.active ?? false} />
+    {loading ? <LoadingState /> : items.length === 0 ? <EmptyState>{hasFilters ? 'No hay unidades que coincidan con los filtros seleccionados.' : 'Todavía no hay unidades registradas.'}</EmptyState> : <><div className="overflow-x-auto rounded-xl border bg-card"><table className="w-full text-left text-sm"><thead className="border-b bg-muted/50"><tr><th className="p-3">Código</th><th className="p-3">Dirección</th><th className="p-3">Estacionamiento</th><th className="p-3">Estado</th><th className="p-3 text-right"><span className="sr-only">Acciones</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-3 font-medium">{item.code}</td><td className="p-3">{item.address}</td><td className="p-3">{item.parkingSpaces.toLocaleString('es')}</td><td className="p-3">{item.active ? 'Activa' : 'Inactiva'}</td><td className="flex justify-end gap-2 p-3"><Button variant="outline" size="sm" aria-label={`Editar unidad ${item.code}`} onClick={() => { setEditError(''); setEditing(item) }}><Edit className="size-4" />Editar</Button><Button variant="outline" size="sm" onClick={() => { setToggleError(''); setPendingLifecycle({ item, action: item.archivedAt ? 'restore' : 'archive' }) }}><RotateCcw className="size-4" />{item.archivedAt ? 'Restaurar unidad' : 'Archivar unidad'}</Button><Button variant="outline" size="sm" onClick={() => { setToggleError(''); setPendingToggle(item) }}><Power className="size-4" />{item.active ? 'Desactivar' : 'Activar'}</Button></td></tr>)}</tbody></table></div><Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPageChange={setPage} /></>}
+    <ConfirmDialog open={Boolean(pendingToggle)} onCancel={() => dismissAction('toggle')} onConfirm={() => { if (pendingToggle) void toggle(pendingToggle) }} busy={toggleBusy} error={toggleError} title={pendingToggle?.active ? 'Desactivar unidad' : 'Activar unidad'} description={pendingToggle ? `¿Desea ${pendingToggle.active ? 'desactivar' : 'activar'} la unidad ${pendingToggle.code}?` : ''} confirmLabel={pendingToggle?.active ? 'Desactivar unidad' : 'Activar unidad'} destructive={pendingToggle?.active ?? false} />
+    <ConfirmDialog open={Boolean(pendingLifecycle)} onCancel={() => dismissAction('lifecycle')} onConfirm={() => void lifecycle()} busy={toggleBusy} error={toggleError} title={pendingLifecycle?.action === 'archive' ? 'Archivar unidad' : 'Restaurar unidad'} description={pendingLifecycle ? `¿Desea ${pendingLifecycle.action === 'archive' ? 'archivar' : 'restaurar'} la unidad ${pendingLifecycle.item.code}?` : ''} confirmLabel={pendingLifecycle?.action === 'archive' ? 'Archivar unidad' : 'Restaurar unidad'} destructive={pendingLifecycle?.action === 'archive'} />
   </>
 }
