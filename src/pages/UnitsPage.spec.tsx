@@ -179,4 +179,25 @@ describe('UnitsPage pagination integration', () => {
     await Promise.resolve()
     expect(vi.mocked(api).mock.calls.filter(([path]) => String(path).startsWith('/units?'))).toHaveLength(1)
   })
+
+  it('retries a general list failure and keeps current and archived code-reserved rows distinct', async () => {
+    const current = { id: 'current', code: 'CURRENT-1', address: 'Current Street', parkingSpaces: 1, active: true, archivedAt: null }
+    const archived = { id: 'archived', code: 'RESERVED-1', address: 'Archived Street', parkingSpaces: 1, active: false, archivedAt: '2026-01-01' }
+    let failed = false
+    vi.mocked(api).mockImplementation((path) => {
+      if (!failed) { failed = true; return Promise.reject(new Error('Unit list unavailable')) as never }
+      return Promise.resolve({ items: String(path).includes('includeArchived=true') ? [current, archived] : [current], total: String(path).includes('includeArchived=true') ? 2 : 1, page: 1, pageSize: 10 }) as never
+    })
+    render(<UnitsPage />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unit list unavailable')
+    fireEvent.click(screen.getByRole('button', { name: /reintentar/i }))
+    expect(await screen.findByText('CURRENT-1')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: /archivados/i }), { target: { value: 'ARCHIVED' } })
+    expect(await screen.findByText('RESERVED-1')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /restaurar unidad/i }))
+    const dialog = screen.getByRole('dialog', { name: /restaurar unidad/i })
+    expect(dialog).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: /cancelar/i }))
+    expect(screen.getByRole('button', { name: /archivar unidad/i })).toBeInTheDocument()
+  })
 })

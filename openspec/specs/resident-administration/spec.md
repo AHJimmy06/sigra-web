@@ -48,8 +48,8 @@ The Web MUST offer explicit archive and restore actions only in the applicable r
 
 - GIVEN an administrator archives a resident whose `active` value is `false` and confirms
 - WHEN the archive and subsequent restore requests succeed
-- THEN while archived, the resident is absent from the default non-archived query and appears only in the explicit archived-only query distinct from `status`
-- AND after restore, the resident leaves the archived-only result and reappears in the default non-archived query with `active=false`
+- THEN while archived, the resident is absent from the default non-archived query and appears in the explicit `includeArchived=true` query alongside current residents, distinct from `status`
+- AND after restore, the resident reappears in the default non-archived query while `includeArchived=true` continues to return current and archived residents with `active=false`
 
 #### Scenario: Archive conflict or failure
 

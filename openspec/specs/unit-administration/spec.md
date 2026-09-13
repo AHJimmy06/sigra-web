@@ -31,8 +31,8 @@ The Web MUST keep `active` as an independent boolean for activation/deactivation
 
 - GIVEN an administrator confirms a valid archive for a unit with a reserved code and known `active` value
 - WHEN the archive and subsequent restore requests succeed
-- THEN while archived, the unit is absent from the default non-archived query and appears only in the explicit archived-only query distinct from `status`
-- AND after restore, the unit leaves the archived-only result and reappears in the default non-archived query with its prior `active` value and reserved code unchanged
+- THEN while archived, the unit is absent from the default non-archived query and appears in the explicit `includeArchived=true` query alongside current units, distinct from `status`
+- AND after restore, the unit reappears in the default non-archived query while `includeArchived=true` continues to return current and archived units with its prior `active` value and reserved code unchanged
 
 #### Scenario: Activation remains separate
 
