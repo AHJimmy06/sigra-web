@@ -67,3 +67,33 @@ Resident archive deactivates the resident and linked user; restore requires an i
 | Rollback boundary | Revert only `src/pages/UnitsPage.tsx` and `src/pages/UnitsPage.spec.tsx`; this removes unit archive/filter/action behavior without changing resident, contract, session, or integration work. |
 
 PR 3 is the `feature-branch-chain` child based on resident PR 2. Delivery is maintainer-approved `exception-ok`; this autonomous slice is unit-only and has 132 authored changed lines (114 additions, 18 deletions).
+
+## PR 4 Integration and Regression Proof
+
+### Completed Tasks
+
+- [x] 4.1 Regression and validation evidence recorded without product changes.
+- [x] 4.2 Pinned-contract, smoke, accessibility/race, line-count, and rollback evidence recorded.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| 4.1 | Existing focused and full suites | Component integration / regression | Focused chain suite: 5 files, 35/35 passed | N/A: proof-only task; no production behavior or test refinement was needed because the inherited safety net was green | Full `npm test`: 18 files, 115/115 passed; `npm run validate`: lint exit 0 and build passed | Existing suite covers ADMIN navigation, resident/unit flows, accessibility, and stale response/ownership paths | None needed; no product code changed |
+| 4.2 | `src/api/contracts.spec.ts`, route/page suites | Contract / component integration | 5 files, 35/35 passed | N/A: evidence-recording task; no executable behavior changed | Pinned SHA and scope assertions remain green in the full 115-test run | Contract credential exclusion plus route, lifecycle, focus, and stale-response scenarios are covered by inherited tests | None needed; documentation evidence only |
+
+### PR 4 Work Unit Evidence
+
+| Evidence | Result |
+|---|---|
+| Focused test | `npm test -- src/App.spec.tsx src/api/contracts.spec.ts src/pages/ResidentDetailPage.spec.tsx src/pages/ResidentsPage.spec.tsx src/pages/UnitsPage.spec.tsx`: 5 files, 35/35 passed. No RED/GREEN fix was needed because all inherited regression tests passed before any edit. |
+| Full regression | `npm test`: 18 files, 115/115 passed. |
+| Validation | `npm run validate`: lint exited 0 with the pre-existing `react(set-state-in-effect)` advisory in `src/pages/ResidentDetailPage.tsx`; `tsc -b && vite build` passed. Vite emitted the pre-existing >500 kB chunk-size advisory (727.69 kB uncompressed entry chunk). |
+| Diff integrity | `git diff --check`: passed. |
+| Runtime smoke scenario | jsdom component-integration smoke: ADMIN routes to resident detail while GUARD redirects to scanner; resident/unit pages issue canonical pinned requests, render lifecycle confirmations with focused errors, and stale list/detail/action responses cannot commit. Browser E2E remains unavailable. |
+| Accessibility and race coverage | Accessible confirmation dialogs and focused `role="alert"` failures are covered in resident/unit suites; stale detail, stale unit list, cancelled unit-option traversal, and stale unit lifecycle ownership are covered by their respective focused suites. |
+| Contract and scope guard | Exact pinned API SHA is `40be73f5aa067f3088da97cc506d2517be085e96`; `contracts.spec.ts` proves password is excluded from response DTO fields. No session transport, API client, or unrelated route file changed in PR 4. |
+| Authored changed lines | 32 additions, 2 deletions (34 total): OpenSpec evidence and task checkboxes only; 0 product-code lines. |
+| Rollback boundary | Revert only the two Phase 4 checkbox updates in `tasks.md` and the `PR 4 Integration and Regression Proof` section in this file; resident, unit, contract, session, and route behavior remain untouched. |
+
+PR 4 is the final `feature-branch-chain` child based on PR 3. Delivery remains maintainer-approved `exception-ok`; this proof-only child is within the 250-line budget and introduces no product scope.

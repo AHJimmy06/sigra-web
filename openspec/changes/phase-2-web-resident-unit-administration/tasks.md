@@ -42,5 +42,5 @@ Chain strategy: feature-branch-chain
 
 ## Phase 4: Integration Proof (PR 4)
 
-- [ ] 4.1 **RED/GREEN:** Run and fix focused suites, then `npm test && npm run validate`; record exact results and confirm no session transport, password DTO, or unrelated route changes.
-- [ ] 4.2 Record SHA, contract evidence, smoke scenario, accessibility/race coverage, changed-line counts, and rollback boundaries in the PR chain; mark tasks complete after evidence exists.
+- [x] 4.1 **RED/GREEN:** Run and fix focused suites, then `npm test && npm run validate`; record exact results and confirm no session transport, password DTO, or unrelated route changes.
+- [x] 4.2 Record SHA, contract evidence, smoke scenario, accessibility/race coverage, changed-line counts, and rollback boundaries in the PR chain; mark tasks complete after evidence exists.
