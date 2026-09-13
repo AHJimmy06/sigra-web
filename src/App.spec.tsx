@@ -13,6 +13,7 @@ vi.mock('@/components/Shell', () => ({ Shell: ({ children }: { children: ReactNo
 vi.mock('@/pages/DashboardPage', () => ({ DashboardPage: () => <div>Admin dashboard</div> }))
 vi.mock('@/pages/GuardScannerPage', () => ({ GuardScannerPage: () => <div>Guard scanner</div> }))
 vi.mock('@/pages/AccessEventsPage', () => ({ AccessEventsPage: () => <div>Access history</div> }))
+vi.mock('@/pages/ResidentDetailPage', () => ({ ResidentDetailPage: () => <div>Resident detail</div> }))
 
 describe('role routes', () => {
   beforeEach(() => {
@@ -48,6 +49,19 @@ describe('role routes', () => {
     render(<App />)
     expect(await screen.findByText('Guard scanner')).toBeInTheDocument()
     expect(screen.queryByText('Access history')).not.toBeInTheDocument()
+  })
+
+  it('allows only ADMIN users to open a resident detail route', async () => {
+    auth.user = { role: 'ADMIN' }
+    window.history.pushState({}, '', '/residents/resident-1')
+    const adminView = render(<App />)
+    expect(await screen.findByText('Resident detail')).toBeInTheDocument()
+    adminView.unmount()
+
+    auth.user = { role: 'GUARD' }
+    render(<App />)
+    expect(await screen.findByText('Guard scanner')).toBeInTheDocument()
+    expect(screen.queryByText('Resident detail')).not.toBeInTheDocument()
   })
 
   it('does not expose routes for backend capabilities that are not implemented', async () => {

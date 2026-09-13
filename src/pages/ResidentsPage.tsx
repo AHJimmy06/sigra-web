@@ -1,8 +1,8 @@
 // oxlint-disable react/set-state-in-effect -- List state is synchronized with server query state.
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Edit, Filter, Plus, RotateCcw, Search, UserRoundX, X } from 'lucide-react'
 import { api } from '@/api/client'
-import { toQueryString, type PaginatedResponse } from '@/api/contracts'
+import { residentContract, unitContract, type PaginatedResponse } from '@/api/contracts'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { applyApiFieldErrors, clearSpanishValidationMessage, setSpanishValidationMessage } from '@/components/FieldFeedback'
 import { Pagination } from '@/components/Pagination'
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 
 interface Unit { id: string; code: string; active: boolean }
-interface Resident { id: string; name: string; email?: string; phone: string | null; active: boolean; unit: Unit }
+interface Resident { id: string; name: string; email?: string; phone: string | null; active: boolean; archivedAt?: string | null; unit: Unit }
 const unitPageSize = 100
 
 async function loadAllUnits(signal?: AbortSignal) {
@@ -20,7 +20,7 @@ async function loadAllUnits(signal?: AbortSignal) {
   let page = 1
   let pageCount = 1
   do {
-    const response = await api<PaginatedResponse<Unit>>(`/units?page=${page}&pageSize=${unitPageSize}`, { signal })
+    const response = await api<PaginatedResponse<Unit>>(unitContract.list({ page, pageSize: unitPageSize }).path, { signal })
     if (signal?.aborted) return []
     response.items.forEach((unit) => { if (!seen.has(unit.id)) { seen.add(unit.id); units.push(unit) } })
     pageCount = Math.max(1, Math.ceil(response.total / unitPageSize))
@@ -46,16 +46,19 @@ export function ResidentsPage() {
   const [discardCreateOpen, setDiscardCreateOpen] = useState(false)
   const [editing, setEditing] = useState<Resident | null>(null)
   const [pendingAccess, setPendingAccess] = useState<{ item: Resident; active: boolean } | null>(null)
+  const [pendingLifecycle, setPendingLifecycle] = useState<{ item: Resident; action: 'archive' | 'restore' } | null>(null)
   const [accessBusy, setAccessBusy] = useState(false)
   const [accessError, setAccessError] = useState('')
   const [createBusy, setCreateBusy] = useState(false)
   const [editBusy, setEditBusy] = useState(false)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
+  const [archiveFilter, setArchiveFilter] = useState('CURRENT')
   const [unitFilter, setUnitFilter] = useState('ALL')
   const [page, setPage] = useState(1)
   const [reloadVersion, setReloadVersion] = useState(0)
   const pageSize = 10
+  const generation = useRef(0)
 
   function closeCreate() {
     if (createDirty) setDiscardCreateOpen(true)
@@ -68,25 +71,26 @@ export function ResidentsPage() {
   }
 
   const load = useCallback(async (signal?: AbortSignal) => {
+    const owner = ++generation.current
     setLoading(true)
     setError('')
     try {
       const [residents, unitList] = await Promise.all([
-        api<PaginatedResponse<Resident>>(`/residents${toQueryString({ page, pageSize, search: query.trim(), status: statusFilter === 'ALL' ? undefined : statusFilter === 'ACTIVE', unitId: unitFilter === 'ALL' ? undefined : unitFilter })}`, { signal }),
+        api<PaginatedResponse<Resident>>(residentContract.list({ page, pageSize, search: query.trim(), status: statusFilter === 'ALL' ? undefined : statusFilter === 'ACTIVE', unitId: unitFilter === 'ALL' ? undefined : unitFilter, includeArchived: archiveFilter === 'ARCHIVED' ? true : undefined }).path, { signal }),
         loadAllUnits(signal),
       ])
-      if (signal?.aborted) return
+      if (signal?.aborted || owner !== generation.current) return
       const lastPage = Math.max(1, Math.ceil(residents.total / pageSize))
       if (page > lastPage) { setPage(lastPage); return }
       setItems(residents.items)
       setTotal(residents.total)
       setUnits(unitList)
     } catch (value) {
-      if (!signal?.aborted) setError(value instanceof Error ? value.message : 'No fue posible cargar los residentes.')
+      if (!signal?.aborted && owner === generation.current) setError(value instanceof Error ? value.message : 'No fue posible cargar los residentes.')
     } finally {
-      if (!signal?.aborted) setLoading(false)
+      if (!signal?.aborted && owner === generation.current) setLoading(false)
     }
-  }, [page, query, statusFilter, unitFilter])
+  }, [archiveFilter, page, query, statusFilter, unitFilter])
 
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort() }, [load, reloadVersion])
 
@@ -99,7 +103,7 @@ export function ResidentsPage() {
     setCreateBusy(true)
     setCreateError('')
     try {
-      await api('/residents', { method: 'POST', body: JSON.stringify({ name: data.get('name'), phone: data.get('phone'), unitId: data.get('unitId'), email: String(data.get('email')).trim().toLowerCase(), password: data.get('password') }) })
+      await api(residentContract.create({ name: String(data.get('name')), phone: String(data.get('phone')) || undefined, unitId: String(data.get('unitId')), email: String(data.get('email')).trim().toLowerCase(), password: String(data.get('password')) }).path, { method: 'POST', body: JSON.stringify({ name: data.get('name'), phone: data.get('phone'), unitId: data.get('unitId'), email: String(data.get('email')).trim().toLowerCase(), password: data.get('password') }) })
       form.reset()
       setCreateDirty(false)
       setModalOpen(false)
@@ -141,23 +145,37 @@ export function ResidentsPage() {
 
   async function setAccess(item: Resident, active: boolean) {
     if (accessBusy) return
+    const owner = ++generation.current
     setAccessBusy(true)
     setAccessError('')
-    try { await api(`/residents/${item.id}`, { method: 'PATCH', body: JSON.stringify({ active }) }); setPendingAccess(null); setReloadVersion((value) => value + 1) }
-    catch (value) { setAccessError(value instanceof Error ? value.message : `No fue posible ${active ? 'activar' : 'revocar'} el acceso.`) }
-    finally { setAccessBusy(false) }
+    try { await api(residentContract.update(item.id, { active }).path, { method: 'PATCH', body: JSON.stringify({ active }) }); if (owner === generation.current) { setPendingAccess(null); setReloadVersion((value) => value + 1) } }
+    catch (value) { if (owner === generation.current) setAccessError(value instanceof Error ? value.message : `No fue posible ${active ? 'activar' : 'revocar'} el acceso.`) }
+    finally { if (owner === generation.current) setAccessBusy(false) }
+  }
+
+  async function lifecycle() {
+    if (!pendingLifecycle || accessBusy) return
+    const { item, action } = pendingLifecycle
+    const owner = ++generation.current
+    setAccessBusy(true); setAccessError('')
+    try {
+      await api((action === 'archive' ? residentContract.archive(item.id) : residentContract.restore(item.id)).path, { method: 'POST' })
+      if (owner === generation.current) { setPendingLifecycle(null); setReloadVersion((value) => value + 1) }
+    } catch (value) { if (owner === generation.current) setAccessError(value instanceof Error ? value.message : 'No fue posible actualizar el archivo del residente.') }
+    finally { if (owner === generation.current) setAccessBusy(false) }
   }
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
-  const hasFilters = Boolean(query.trim()) || statusFilter !== 'ALL' || unitFilter !== 'ALL'
+  const hasFilters = Boolean(query.trim()) || statusFilter !== 'ALL' || unitFilter !== 'ALL' || archiveFilter !== 'CURRENT'
   return <>
     <PageHeader title="Residentes" description="Gestione las cuentas, unidades asignadas y permisos de acceso." action={<Button onClick={() => { setCreateError(''); setModalOpen(true) }}><Plus className="size-4" />Agregar residente</Button>} />
     {error && !pendingAccess && <ErrorState message={error} onRetry={() => void load()} />}
     <section className="mb-6 rounded-xl border bg-card p-4" aria-label="Filtros de residentes">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium"><Filter className="size-4" />Buscar y filtrar residentes</div>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_220px]">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px_220px]">
         <label className="relative"><span className="sr-only">Buscar por nombre o unidad</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} placeholder="Ej. Ana García o Torre A-101" className="w-full rounded-lg border bg-background py-2 pl-9 pr-3" /></label>
         <label><span className="sr-only">Filtrar por estado</span><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"><option value="ALL">Todos los estados</option><option value="ACTIVE">Activos</option><option value="INACTIVE">Revocados</option></select></label>
+        <label><span className="sr-only">Filtrar archivados</span><select value={archiveFilter} onChange={(event) => { setArchiveFilter(event.target.value); setPage(1) }} className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"><option value="CURRENT">No archivados</option><option value="ARCHIVED">Archivados</option></select></label>
         <label><span className="sr-only">Filtrar por unidad</span><select value={unitFilter} onChange={(event) => { setUnitFilter(event.target.value); setPage(1) }} className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"><option value="ALL">Todas las unidades</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.code}</option>)}</select></label>
       </div>
     </section>
@@ -182,7 +200,8 @@ export function ResidentsPage() {
         <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="outline" disabled={editBusy} onClick={() => setEditing(null)}><X className="size-4" />Cancelar</Button><Button type="submit" disabled={editBusy}><Edit className="size-4" />{editBusy ? 'Guardando…' : 'Guardar cambios'}</Button></div>
       </form>
     </Modal>
-    {loading ? <LoadingState /> : items.length === 0 ? <EmptyState>{hasFilters ? 'No hay residentes que coincidan con los filtros seleccionados.' : 'Todavía no hay residentes registrados.'}</EmptyState> : <><div className="overflow-x-auto rounded-xl border bg-card"><table className="w-full text-left text-sm"><thead className="border-b bg-muted/50"><tr><th className="p-3">Residente</th><th className="p-3">Unidad</th><th className="p-3">Teléfono</th><th className="p-3">Estado</th><th className="p-3 text-right"><span className="sr-only">Acciones</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-3 font-medium">{item.name}</td><td className="p-3">{item.unit.code}</td><td className="p-3">{item.phone || 'No registrado'}</td><td className="p-3">{item.active ? 'Activo' : 'Revocado'}</td><td className="flex justify-end gap-2 p-3"><Button variant="outline" size="sm" aria-label={`Editar a ${item.name}`} onClick={() => { setEditError(''); setEditing(item) }}><Edit className="size-4" />Editar</Button>{item.active ? <Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingAccess({ item, active: false }) }}><UserRoundX className="size-4" />Revocar acceso</Button> : <Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingAccess({ item, active: true }) }}><RotateCcw className="size-4" />Activar acceso</Button>}</td></tr>)}</tbody></table></div><Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPageChange={setPage} /></>}
+    {loading ? <LoadingState /> : items.length === 0 ? <EmptyState>{hasFilters ? 'No hay residentes que coincidan con los filtros seleccionados.' : 'Todavía no hay residentes registrados.'}</EmptyState> : <><div className="overflow-x-auto rounded-xl border bg-card"><table className="w-full text-left text-sm"><thead className="border-b bg-muted/50"><tr><th className="p-3">Residente</th><th className="p-3">Unidad</th><th className="p-3">Teléfono</th><th className="p-3">Estado</th><th className="p-3 text-right"><span className="sr-only">Acciones</span></th></tr></thead><tbody>{items.map((item) => <tr key={item.id} className="border-b last:border-0"><td className="p-3 font-medium">{item.name}</td><td className="p-3">{item.unit.code}</td><td className="p-3">{item.phone || 'No registrado'}</td><td className="p-3">{item.active ? 'Activo' : 'Revocado'}</td><td className="flex justify-end gap-2 p-3"><Button variant="outline" size="sm" aria-label={`Editar a ${item.name}`} onClick={() => { setEditError(''); setEditing(item) }}><Edit className="size-4" />Editar</Button><Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingLifecycle({ item, action: item.archivedAt ? 'restore' : 'archive' }) }}>{item.archivedAt ? 'Restaurar residente' : 'Archivar residente'}</Button>{item.active ? <Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingAccess({ item, active: false }) }}><UserRoundX className="size-4" />Revocar acceso</Button> : <Button variant="outline" size="sm" onClick={() => { setAccessError(''); setPendingAccess({ item, active: true }) }}><RotateCcw className="size-4" />Activar acceso</Button>}</td></tr>)}</tbody></table></div><Pagination page={page} pageCount={pageCount} total={total} pageSize={pageSize} onPageChange={setPage} /></>}
     <ConfirmDialog open={Boolean(pendingAccess)} onCancel={() => setPendingAccess(null)} onConfirm={() => { if (pendingAccess) void setAccess(pendingAccess.item, pendingAccess.active) }} busy={accessBusy} error={accessError} title={pendingAccess?.active ? 'Activar acceso' : 'Revocar acceso'} description={pendingAccess ? `¿Desea ${pendingAccess.active ? 'activar nuevamente' : 'revocar'} el acceso de ${pendingAccess.item.name}?` : ''} confirmLabel={pendingAccess?.active ? 'Activar acceso' : 'Revocar acceso'} destructive={pendingAccess ? !pendingAccess.active : false} />
+    <ConfirmDialog open={Boolean(pendingLifecycle)} onCancel={() => setPendingLifecycle(null)} onConfirm={() => void lifecycle()} busy={accessBusy} error={accessError} title={pendingLifecycle?.action === 'archive' ? 'Archivar residente' : 'Restaurar residente'} description={pendingLifecycle ? `¿Desea ${pendingLifecycle.action === 'archive' ? 'archivar' : 'restaurar'} a ${pendingLifecycle.item.name}?` : ''} confirmLabel={pendingLifecycle?.action === 'archive' ? 'Archivar residente' : 'Restaurar residente'} destructive={pendingLifecycle?.action === 'archive'} />
   </>
 }

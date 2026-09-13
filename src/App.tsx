@@ -8,6 +8,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { GuardScannerPage } from '@/pages/GuardScannerPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { ResidentsPage } from '@/pages/ResidentsPage'
+import { ResidentDetailPage } from '@/pages/ResidentDetailPage'
 import { TicketsPage } from '@/pages/TicketsPage'
 import { UnitsPage } from '@/pages/UnitsPage'
 
@@ -21,6 +22,7 @@ function ProtectedApp() {
       <Routes>
         <Route path="/dashboard" element={user.role === 'ADMIN' ? <DashboardPage /> : <Navigate to="/guard" replace />} />
         <Route path="/residents" element={user.role === 'ADMIN' ? <ResidentsPage /> : <Navigate to="/guard" replace />} />
+        <Route path="/residents/:residentId" element={user.role === 'ADMIN' ? <ResidentDetailPage /> : <Navigate to="/guard" replace />} />
         <Route path="/units" element={user.role === 'ADMIN' ? <UnitsPage /> : <Navigate to="/guard" replace />} />
         <Route path="/announcements" element={user.role === 'ADMIN' ? <AnnouncementsPage /> : <Navigate to="/guard" replace />} />
         <Route path="/tickets" element={user.role === 'ADMIN' ? <TicketsPage /> : <Navigate to="/guard" replace />} />

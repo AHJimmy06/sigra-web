@@ -177,6 +177,53 @@ describe('ResidentsPage pagination integration', () => {
     expect(alert).toHaveFocus()
   })
 
+  it('shows archived residents only through the archive filter and preserves independent activation actions', async () => {
+    vi.mocked(api).mockImplementation((path) => Promise.resolve(path.startsWith('/units')
+      ? { items: [], total: 0, page: 1, pageSize: 100 }
+      : { items: [{ id: 'resident-1', name: 'Archived Ana', email: 'ana@example.com', phone: null, active: false, archivedAt: '2026-01-01', unit: { id: 'unit-1', code: 'A-101', active: true } }], total: 1, page: 1, pageSize: 10 }) as never)
+    render(<ResidentsPage />)
+    await screen.findByText('Archived Ana')
+    expect(vi.mocked(api)).toHaveBeenCalledWith(expect.stringContaining('/residents?page=1&pageSize=10'), expect.anything())
+    fireEvent.change(screen.getByRole('combobox', { name: /archivados/i }), { target: { value: 'ARCHIVED' } })
+    await waitFor(() => expect(vi.mocked(api)).toHaveBeenCalledWith(expect.stringContaining('includeArchived=true'), expect.anything()))
+    expect(screen.getByRole('button', { name: /restaurar residente/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /activar acceso/i })).toBeInTheDocument()
+  })
+
+  it('archives through the pinned lifecycle path and reloads the server-confirmed inactive resident', async () => {
+    const archived = { id: 'resident-1', name: 'Ana', email: 'ana@example.com', phone: null, active: false, archivedAt: '2026-01-01', unit: { id: 'unit-1', code: 'A-101', active: true } }
+    let residentLoads = 0
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === '/residents/resident-1/archive') return Promise.resolve({}) as never
+      if (path.startsWith('/units')) return Promise.resolve({ items: [], total: 0, page: 1, pageSize: 100 }) as never
+      residentLoads += 1
+      return Promise.resolve({ items: [residentLoads === 1 ? { ...archived, active: true, archivedAt: null } : archived], total: 1, page: 1, pageSize: 10 }) as never
+    })
+    render(<ResidentsPage />)
+    await screen.findByText('Ana')
+    fireEvent.click(screen.getByRole('button', { name: /archivar residente/i }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: /archivar residente/i })).getByRole('button', { name: /archivar residente/i }))
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/residents/resident-1/archive', expect.objectContaining({ method: 'POST' })))
+  })
+
+  it('keeps a reserved-email conflict visible with field feedback and focus', async () => {
+    vi.mocked(api).mockImplementation((path, options) => options?.method === 'POST'
+      ? Promise.reject(new ApiError(409, 'Email is already registered', 'CONFLICT', { details: { email: ['Email is already registered'] } })) as never
+      : Promise.resolve(path.startsWith('/units') ? { items: [{ id: 'unit-1', code: 'A-101', active: true }], total: 1, page: 1, pageSize: 100 } : { items: [], total: 0, page: 1, pageSize: 10 }) as never)
+    render(<ResidentsPage />)
+    await screen.findByText('Todavía no hay residentes registrados.')
+    fireEvent.click(screen.getByRole('button', { name: /agregar residente/i }))
+    fireEvent.change(screen.getByPlaceholderText('Ej. Ana García'), { target: { value: 'Ana García' } })
+    fireEvent.change(screen.getByPlaceholderText('ana.garcia@correo.com'), { target: { value: 'ana@example.com' } })
+    fireEvent.change(screen.getByRole('combobox', { name: /unidad residencial/i }), { target: { value: 'unit-1' } })
+    fireEvent.change(screen.getByPlaceholderText('Mínimo 8 caracteres'), { target: { value: 'abcdefgh' } })
+    fireEvent.submit(screen.getByRole('button', { name: /crear residente/i }).closest('form')!)
+    const email = screen.getByPlaceholderText('ana.garcia@correo.com')
+    await waitFor(() => expect(email).toHaveFocus())
+    expect(email).toHaveAttribute('aria-invalid', 'true')
+    expect(email).toHaveAttribute('aria-describedby')
+  })
+
   it('returns to the previous filtered page when revoking its last resident', async () => {
     let revoked = false
     let patchAttempts = 0

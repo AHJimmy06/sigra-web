@@ -32,8 +32,8 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Resident Slice (PR 2)
 
-- [ ] 2.1 **RED:** Extend `src/App.spec.tsx`, create `src/pages/ResidentDetailPage.spec.tsx`, and extend `src/pages/ResidentsPage.spec.tsx` for ADMIN route/role safety, detail loading/404/401/403/error/retry, stale ownership, archive visibility, reserved email, independent `active`, focus, and field feedback.
-- [ ] 2.2 **GREEN:** Modify `src/App.tsx`, create `src/pages/ResidentDetailPage.tsx`, and modify `src/pages/ResidentsPage.tsx` to pass 2.1 using verified builders, bounded cancellable options, owned generations, and accessible confirmations; no guessed paths.
+- [x] 2.1 **RED:** Extend `src/App.spec.tsx`, create `src/pages/ResidentDetailPage.spec.tsx`, and extend `src/pages/ResidentsPage.spec.tsx` for ADMIN route/role safety, detail loading/404/401/403/error/retry, stale ownership, archive visibility, reserved email, independent `active`, focus, and field feedback.
+- [x] 2.2 **GREEN:** Modify `src/App.tsx`, create `src/pages/ResidentDetailPage.tsx`, and modify `src/pages/ResidentsPage.tsx` to pass 2.1 using verified builders, bounded cancellable options, owned generations, and accessible confirmations; no guessed paths.
 
 ## Phase 3: Unit Slice (PR 3)
 
