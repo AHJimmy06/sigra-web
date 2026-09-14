@@ -105,7 +105,7 @@ Criterio de terminado: un administrador puede crear, consultar, editar, activar,
 
 ### Fase 3. Cartelera y comunicación
 
-Estado actual: iniciada en frontend. La cartelera ya permite crear, editar, buscar, filtrar, paginar y confirmar publicación/retiro. Falta migrar la paginación al servidor, enriquecer autoría/fechas y habilitar el consumo móvil según [backend-phase-3.md](backend-phase-3.md).
+Estado actual: el backend completó y archivó las fases 3A y 3B, completó 3C y llegó hasta la implementación de 3D en `b71d20d` (12 de 22 tareas). El avance quedó detenido antes de 3E porque la verificación final de 3D detectó una métrica de diff desactualizada en su evidencia, que se conserva sin corregir por decisión del mantenedor. El siguiente trabajo es 3E (ruta HTTP para residentes), seguido de 3F (OpenAPI ADMIN), 3G (OpenAPI RESIDENT/SHA) y el cierre con verificación y archivo. La implementación web de Fase 3 todavía no comenzó y debe esperar a que el contrato API quede completo.
 
 Frontend web:
 
