@@ -105,15 +105,16 @@ Criterio de terminado: un administrador puede crear, consultar, editar, activar,
 
 ### Fase 3. Cartelera y comunicación
 
-Estado actual: el backend completó y archivó las fases 3A y 3B, completó 3C y llegó hasta la implementación de 3D en `b71d20d` (12 de 22 tareas). El avance quedó detenido antes de 3E porque la verificación final de 3D detectó una métrica de diff desactualizada en su evidencia, que se conserva sin corregir por decisión del mantenedor. El siguiente trabajo es 3E (ruta HTTP para residentes), seguido de 3F (OpenAPI ADMIN), 3G (OpenAPI RESIDENT/SHA) y el cierre con verificación y archivo. La implementación web de Fase 3 todavía no comenzó y debe esperar a que el contrato API quede completo.
+Estado actual: el backend completó y archivó las fases 3A y 3B, completó 3C y llegó hasta la implementación de 3D en `b71d20d` (12 de 22 tareas). El avance quedó detenido antes de 3E porque la verificación final de 3D detectó una métrica de diff desactualizada en su evidencia, que se conserva sin corregir por decisión del mantenedor. El siguiente trabajo es 3E (ruta HTTP para residentes), seguido de 3F (OpenAPI ADMIN), 3G (OpenAPI RESIDENT/SHA) y el cierre con verificación y archivo. En Web ya existe una base ADMIN parcial con paginación según la forma del servidor, creación, edición, publicación, retiro, filtros, confirmaciones y pruebas. Su finalización y endurecimiento contractual no han comenzado y deben esperar a que el contrato API quede completo.
 
 Frontend web:
 
-- Paginación del servidor.
-- Edición de anuncios.
-- Confirmación para retirar publicaciones.
-- Estados publicado/borrador con fechas y autor.
-- Preparar lectura de comunicados para móvil.
+- Alinear tipos, consultas, cargas y transiciones con un contrato API inmutable.
+- Completar el ciclo de archivo lógico y sus acciones permitidas.
+- Proteger solicitudes y mutaciones frente a respuestas obsoletas y condiciones de carrera.
+- Diferenciar estados de autorización, prohibición y errores recuperables.
+- Completar metadatos de autoría y fechas según la política acordada.
+- Añadir pruebas exactas del contrato y de sus transiciones.
 
 Backend:
 
