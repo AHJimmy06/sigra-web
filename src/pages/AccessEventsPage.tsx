@@ -15,6 +15,7 @@ import {
   LoadingState,
   PageHeader,
 } from "@/components/PageState";
+import { Modal } from "@/components/ui/modal";
 interface PaginatedResponse<T> {
   items: T[];
   total: number;
@@ -58,6 +59,7 @@ export function AccessEventsPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
+  const [selectedEvent, setSelectedEvent] = useState<AccessEvent | null>(null);
   const pageSize = 10;
 
   const load = () => {
@@ -201,7 +203,11 @@ export function AccessEventsPage() {
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} className="border-b last:border-0">
+                <tr
+                  key={item.id}
+                  onClick={() => setSelectedEvent(item)}
+                  className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                >
                   <td className="p-3">
                     <span
                       className={`inline-flex items-center gap-2 font-medium ${item.decision === "ALLOWED" ? "text-emerald-700" : "text-red-700"}`}
@@ -252,6 +258,54 @@ export function AccessEventsPage() {
           pageSize={pageSize}
           onPageChange={setPage}
         />
+      )}
+
+      {selectedEvent && (
+        <Modal
+          open={true}
+          onClose={() => setSelectedEvent(null)}
+          title="Detalle de Auditoría de Acceso"
+          description="Información detallada del evento registrado en la garita. Esta bitácora es inalterable y no expone secretos criptográficos."
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/30 p-4">
+              <div>
+                <span className="text-xs text-muted-foreground block">ID del Evento</span>
+                <span className="text-sm font-mono">{selectedEvent.id}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Fecha y Hora</span>
+                <span className="text-sm">{new Date(selectedEvent.occurredAt).toLocaleString("es")}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Dirección</span>
+                <span className="text-sm">{selectedEvent.direction === "ENTRY" ? "Entrada" : "Salida"}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Guardia de Turno</span>
+                <span className="text-sm font-medium">{selectedEvent.guard?.email ?? "Desconocido"}</span>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4">
+              <h3 className="font-semibold mb-2">Información del Solicitante</h3>
+              <p className="text-sm"><span className="text-muted-foreground">Residente:</span> {selectedEvent.resident?.name ?? "No identificado"}</p>
+              <p className="text-sm"><span className="text-muted-foreground">Unidad:</span> {selectedEvent.resident?.unitCode ?? "N/A"}</p>
+            </div>
+
+            <div className={`rounded-lg border p-4 ${selectedEvent.decision === "ALLOWED" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+              <h3 className={`font-semibold mb-2 ${selectedEvent.decision === "ALLOWED" ? "text-emerald-800" : "text-red-800"}`}>
+                Decisión: {selectedEvent.decision === "ALLOWED" ? "Acceso Permitido" : "Acceso Denegado"}
+              </h3>
+              <p className="text-sm text-foreground/80">
+                <span className="font-medium">Razón:</span> {reasonLabels[selectedEvent.reason] ?? selectedEvent.reason}
+              </p>
+              <p className="text-xs mt-2 opacity-60">
+                Nota: No se muestran llaves criptográficas ni el token QR original por políticas de seguridad.
+              </p>
+            </div>
+          </div>
+        </Modal>
       )}
     </>
   );
