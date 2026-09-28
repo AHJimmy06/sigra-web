@@ -10,7 +10,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [sessionError, setSessionError] = useState<string | null>(null)
   const identityGeneration = useRef(0)
-  const isSupportedUser = (candidate: SessionUser) => candidate.role === 'ADMIN' || candidate.role === 'GUARD'
+  const isSupportedUser = (candidate: SessionUser) => candidate.role === 'ADMIN' || candidate.role === 'GUARD' || candidate.role === 'RESIDENT'
   function invalidateLocal(message: string) {
     identityGeneration.current += 1
     setUser(null)
