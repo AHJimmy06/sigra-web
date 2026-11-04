@@ -12,7 +12,7 @@ cp .env.example .env
 npm run dev
 ```
 
-`VITE_API_URL` is the API origin without the `/api` suffix. The default is `http://localhost:3000`.
+`VITE_API_URL` is the API origin without the `/api` suffix. The default is `http://localhost:3300`. The development server uses port `5178` and preview uses `5179`; both fail rather than silently switching ports if occupied.
 
 In production, `VITE_API_URL` should point to the HTTPS API origin. If frontend and API share the same origin, it can be omitted to use relative paths.
 

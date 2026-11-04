@@ -11,6 +11,7 @@ const auth = vi.hoisted(() => {
 vi.mock('@/auth/AuthContext', () => ({ AuthProvider: ({ children }: { children: ReactNode }) => children, useAuth: () => auth }))
 vi.mock('@/components/Shell', () => ({ Shell: ({ children }: { children: ReactNode }) => <>{children}</> }))
 vi.mock('@/pages/DashboardPage', () => ({ DashboardPage: () => <div>Admin dashboard</div> }))
+vi.mock('@/pages/GuardsPage', () => ({ GuardsPage: () => <div>Guard administration</div> }))
 vi.mock('@/pages/GuardScannerPage', () => ({ GuardScannerPage: () => <div>Guard scanner</div> }))
 vi.mock('@/pages/AccessEventsPage', () => ({ AccessEventsPage: () => <div>Access history</div> }))
 vi.mock('@/pages/ResidentDetailPage', () => ({ ResidentDetailPage: () => <div>Resident detail</div> }))
@@ -72,6 +73,18 @@ describe('role routes', () => {
     expect(await screen.findByText('Bienvenido a SIGRA')).toBeInTheDocument()
     expect(screen.queryByText('Recuperar acceso')).not.toBeInTheDocument()
     expect(screen.queryByText(/olvidó su contraseña/i)).not.toBeInTheDocument()
+  })
+
+  it('allows only administrators to manage guard accounts', async () => {
+    auth.user = { role: 'ADMIN' }
+    window.history.pushState({}, '', '/guards')
+    const view = render(<App />)
+    expect(await screen.findByText('Guard administration')).toBeInTheDocument()
+    view.unmount()
+    auth.user = { role: 'GUARD' }
+    render(<App />)
+    expect(await screen.findByText('Guard scanner')).toBeInTheDocument()
+    expect(screen.queryByText('Guard administration')).not.toBeInTheDocument()
   })
 
   it('denies signed-out users protected routes', async () => {

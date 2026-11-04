@@ -5,6 +5,7 @@ import { Shell } from '@/components/Shell'
 import { AnnouncementsPage } from '@/pages/AnnouncementsPage'
 import { AccessEventsPage } from '@/pages/AccessEventsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { GuardsPage } from '@/pages/GuardsPage'
 import { GuardScannerPage } from '@/pages/GuardScannerPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { ResidentsPage } from '@/pages/ResidentsPage'
@@ -19,7 +20,7 @@ function ProtectedApp() {
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== 'ADMIN' && user.role !== 'GUARD' && user.role !== 'RESIDENT') return <UnsupportedRole />
   return (
-    <Shell>
+    <Shell key={user.sub}>
       <Routes>
         <Route path="/dashboard" element={user.role === 'ADMIN' ? <DashboardPage /> : <Navigate to={user.role === 'RESIDENT' ? '/resident-home' : '/guard'} replace />} />
         <Route path="/residents" element={user.role === 'ADMIN' ? <ResidentsPage /> : <Navigate to={user.role === 'RESIDENT' ? '/resident-home' : '/guard'} replace />} />
@@ -28,6 +29,7 @@ function ProtectedApp() {
         <Route path="/announcements" element={user.role === 'ADMIN' ? <AnnouncementsPage /> : <Navigate to={user.role === 'RESIDENT' ? '/resident-home' : '/guard'} replace />} />
         <Route path="/tickets" element={user.role === 'ADMIN' ? <TicketsPage /> : <Navigate to={user.role === 'RESIDENT' ? '/resident-home' : '/guard'} replace />} />
         <Route path="/access-events" element={user.role === 'ADMIN' ? <AccessEventsPage /> : <Navigate to={user.role === 'RESIDENT' ? '/resident-home' : '/guard'} replace />} />
+        <Route path="/guards" element={user.role === 'ADMIN' ? <GuardsPage /> : <Navigate to={user.role === 'RESIDENT' ? '/resident-home' : '/guard'} replace />} />
         <Route path="/guard" element={user.role === 'GUARD' ? <GuardScannerPage /> : <Navigate to={user.role === 'RESIDENT' ? '/resident-home' : '/dashboard'} replace />} />
         <Route path="/resident-home" element={user.role === 'RESIDENT' ? <ResidentDashboardPage /> : <Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to={user.role === 'GUARD' ? '/guard' : user.role === 'RESIDENT' ? '/resident-home' : '/dashboard'} replace />} />

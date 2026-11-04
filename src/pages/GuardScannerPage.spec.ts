@@ -17,6 +17,12 @@ describe('guard reason localization', () => {
 })
 
 describe('guard validation idempotency', () => {
+  it('includes normalized visitor identity in request identity without changing legacy payloads', () => {
+    const original = nextValidationAttempt(undefined, 'qr-one', 'ENTRY', ' Luis ')
+    expect(nextValidationAttempt(original, 'qr-one', 'ENTRY', 'Luis')).toBe(original)
+    expect(nextValidationAttempt(original, 'qr-one', 'ENTRY', 'Ana').clientEventId).not.toBe(original.clientEventId)
+    expect(nextValidationAttempt(undefined, 'qr-one', 'ENTRY')).not.toHaveProperty('visitorName')
+  })
   it('reuses the client event ID only for the same failed attempt', () => {
     const first = nextValidationAttempt(undefined, 'qr-one', 'ENTRY')
     const retry = nextValidationAttempt(first, 'qr-one', 'ENTRY')

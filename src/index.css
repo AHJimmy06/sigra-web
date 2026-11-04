@@ -60,72 +60,72 @@ a {
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #F4F7FB;
+  --foreground: #142A43;
+  --card: #FFFFFF;
+  --card-foreground: #142A43;
+  --popover: #FFFFFF;
+  --popover-foreground: #142A43;
+  --primary: #0057B8;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E7EEF7;
+  --secondary-foreground: #142A43;
+  --muted: #EAF0F6;
+  --muted-foreground: #52647A;
+  --accent: #E7EEF7;
+  --accent-foreground: #142A43;
+  --destructive: #B42318;
+  --border: #CCD7E3;
+  --input: #A5B5C7;
+  --ring: #0057B8;
+  --success: #087F72;
+  --chart-1: #0057B8;
+  --chart-2: #087F72;
+  --chart-3: #52647A;
+  --chart-4: #142A43;
+  --chart-5: #B42318;
+  --radius: 0.75rem;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #142A43;
+  --sidebar-primary: #0057B8;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E7EEF7;
+  --sidebar-accent-foreground: #142A43;
+  --sidebar-border: #CCD7E3;
+  --sidebar-ring: #0057B8;
+  --action-hover: #00458F;
+  --danger-hover: #901C13;
 }
-
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0E1C2D;
+  --foreground: #F4F7FB;
+  --card: #142A43;
+  --card-foreground: #F4F7FB;
+  --popover: #142A43;
+  --popover-foreground: #F4F7FB;
+  --primary: #8DC2FF;
+  --primary-foreground: #142A43;
+  --secondary: #263E58;
+  --secondary-foreground: #F4F7FB;
+  --muted: #20364D;
+  --muted-foreground: #B4C5D8;
+  --accent: #263E58;
+  --accent-foreground: #F4F7FB;
+  --destructive: #FFB4AA;
+  --border: #435B75;
+  --input: #7890AA;
+  --ring: #8DC2FF;
+  --success: #7EDACE;
+  --sidebar: #142A43;
+  --sidebar-foreground: #F4F7FB;
+  --sidebar-primary: #8DC2FF;
+  --sidebar-primary-foreground: #142A43;
+  --sidebar-accent: #263E58;
+  --sidebar-accent-foreground: #F4F7FB;
+  --sidebar-border: #435B75;
+  --sidebar-ring: #8DC2FF;
+  --action-hover: #B8DAFF;
+  --danger-hover: #FFD3CD;
 }
 
 @layer base {
@@ -138,4 +138,59 @@ a {
   html {
     @apply font-sans;
   }
+}
+
+/* Solid action surfaces do not depend on OKLCH or color-mix support. */
+.sigra-button {
+  min-height: 44px;
+  min-width: 44px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+  transition: background-color 120ms, border-color 120ms;
+}
+.sigra-button:hover { background: var(--action-hover); color: var(--primary-foreground); }
+.sigra-button[data-variant="outline"],
+.sigra-button[data-variant="ghost"] {
+  background: var(--card);
+  color: var(--foreground);
+}
+.sigra-button[data-variant="outline"] { border-color: var(--input); }
+.sigra-button[data-variant="secondary"] {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+.sigra-button[data-variant="outline"]:hover,
+.sigra-button[data-variant="ghost"]:hover,
+.sigra-button[data-variant="secondary"]:hover,
+.sigra-button[aria-expanded="true"]:not([data-variant="default"]) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.sigra-button[data-variant="destructive"] { background: var(--destructive); color: var(--background); }
+.sigra-button[data-variant="destructive"]:hover { background: var(--danger-hover); color: var(--background); }
+.sigra-button[data-variant="link"] { background: transparent; color: var(--primary); }
+.sigra-button:focus-visible,
+.sigra-nav-link:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 3px;
+}
+.sigra-button:disabled { opacity: 1; background: var(--muted); color: var(--muted-foreground); border-color: var(--border); cursor: not-allowed; }
+.sigra-shell { background: var(--background); }
+.sigra-sidebar { background: var(--sidebar); border-color: var(--sidebar-border); }
+.sigra-backdrop { background: rgba(14, 28, 45, 0.6); }
+.sigra-header { border-color: var(--border); }
+.sigra-nav-link { color: var(--muted-foreground); }
+.sigra-nav-link:hover { background: var(--muted); color: var(--foreground); }
+.sigra-nav-link[aria-current="page"] { background: var(--primary); color: var(--primary-foreground); }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  min-height: 44px;
+  background-color: var(--card);
+  color: var(--foreground);
+  border-color: var(--input);
+}
+input::placeholder, textarea::placeholder { color: var(--muted-foreground); opacity: 1; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .sigra-button, .sigra-sidebar { transition: none; }
 }

@@ -4,6 +4,7 @@ import { QrCode, Plus, XCircle, KeyRound, Clock } from 'lucide-react'
 import { api } from '@/api/client'
 import { ErrorState, LoadingState, PageHeader } from '@/components/PageState'
 import { Button } from '@/components/ui/button'
+import { ResidentArrivals } from '@/components/ResidentArrivals'
 import { Modal } from '@/components/ui/modal'
 
 interface AccessPass {
@@ -81,6 +82,7 @@ export function ResidentDashboardPage() {
         description="Gestione sus pases y genere códigos QR para ingresar o permitir la entrada de visitantes."
       />
 
+      <ResidentArrivals />
       {error && <ErrorState message={error} onRetry={fetchPasses} />}
 
       {!loading && !error && (
