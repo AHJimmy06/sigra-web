@@ -11,7 +11,7 @@ describe('Shell responsive navigation', () => {
     vi.mocked(useAuth).mockReturnValue({ user: { sub: 'admin-1', email: 'admin@example.com', role: 'ADMIN', residentId: null }, loading: false, sessionError: null, login: vi.fn(), logout: vi.fn(), invalidateSession: vi.fn() })
     render(<MemoryRouter><Shell><p>Content</p></Shell></MemoryRouter>)
 
-    for (const name of ['Panel', 'Residentes', 'Unidades', 'Cartelera', 'Incidencias', 'Accesos']) {
+    for (const name of ['Panel', 'Residentes', 'Unidades', 'Guardias', 'Cartelera', 'Incidencias', 'Accesos']) {
       expect(screen.getByRole('link', { name })).toHaveAttribute('title', name)
     }
     const collapse = screen.getByRole('button', { name: 'Colapsar menú lateral' })
@@ -24,6 +24,7 @@ describe('Shell responsive navigation', () => {
     render(<MemoryRouter><Shell><p>Content</p></Shell></MemoryRouter>)
 
     expect(screen.getByRole('link', { name: 'Escáner QR' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Guardias' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Accesos' })).not.toBeInTheDocument()
   })
 
