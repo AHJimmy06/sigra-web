@@ -57,6 +57,11 @@ const serverMessageTranslations: Record<string, string> = {
   'Unit code is already registered': 'El código de unidad ya está registrado.',
   'Unit must exist and be active': 'La unidad debe existir y estar activa.',
   'Unit cannot be deactivated while active residents are linked to it': 'No se puede desactivar la unidad mientras tenga residentes activos.',
+  'Unit cannot be archived while dependencies are retained': 'No se puede archivar la unidad mientras conserve residentes o eventos asociados.',
+  'Archived announcements are read-only': 'Los anuncios archivados son de solo lectura.',
+  'GUARD gate authorization is required': 'Se requiere autorización de garita para validar accesos.',
+  'Invalid access event date range': 'El rango de fechas del historial de accesos no es válido.',
+  'Client event ID was already used for a different validation request': 'El identificador del evento ya fue utilizado en otra solicitud de validación.',
   'Invalid ticket status transition': 'El cambio de estado de la incidencia no es válido.',
   'Validation failed': 'La solicitud contiene datos no válidos.',
 }
@@ -280,6 +285,26 @@ export async function api<T>(path: string, options: ApiRequestOptions = {}): Pro
       await waitForRetry(attempt, options.signal ?? undefined)
     }
   }
+}
+
+export async function fetchAuthenticatedBlob(path: string, options: ApiRequestOptions = {}): Promise<Blob> {
+  const normalizedPath = path.startsWith('/api/') ? path.slice(4) : path.startsWith('/') ? path : `/${path}`
+  let response = await fetchResponse(normalizedPath, options)
+  if (response.status === 401 && accessToken && !isRefreshExcluded(normalizedPath)) {
+    try {
+      await refreshAccessToken()
+      response = await fetchResponse(normalizedPath, { ...options, replayed: true })
+    } catch (error) {
+      expireSession()
+      throw error
+    }
+  }
+  if (!response.ok) {
+    const error = await responseError(response)
+    if (response.status === 401 && accessToken) expireSession()
+    throw error
+  }
+  return response.blob()
 }
 
 export async function restoreSession(): Promise<SessionUser> {

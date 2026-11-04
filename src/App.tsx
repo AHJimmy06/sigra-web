@@ -15,7 +15,7 @@ import { UnitsPage } from '@/pages/UnitsPage'
 
 function ProtectedApp() {
   const { user, loading } = useAuth()
-  if (loading) return <div className="grid min-h-screen place-items-center text-muted-foreground">Cargando SIGRA?</div>
+  if (loading) return <div className="grid min-h-screen place-items-center text-muted-foreground">Cargando SIGRA…</div>
   if (!user) return <Navigate to="/login" replace />
   if (user.role !== 'ADMIN' && user.role !== 'GUARD' && user.role !== 'RESIDENT') return <UnsupportedRole />
   return (

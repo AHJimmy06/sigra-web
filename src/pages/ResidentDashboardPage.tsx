@@ -1,3 +1,4 @@
+// oxlint-disable react/set-state-in-effect -- Pass list state is synchronized on mount.
 import { useEffect, useState } from 'react'
 import { QrCode, Plus, XCircle, KeyRound, Clock } from 'lucide-react'
 import { api } from '@/api/client'
@@ -14,7 +15,8 @@ interface AccessPass {
 
 interface QrData {
   payload: string
-  expiresAt: string
+  expiresInSeconds?: number
+  expiresAt?: string
 }
 
 export function ResidentDashboardPage() {
@@ -45,8 +47,8 @@ export function ResidentDashboardPage() {
         body: JSON.stringify({ validDays: days }),
       })
       fetchPasses()
-    } catch (e: any) {
-      alert('Error al generar pase: ' + e.message)
+    } catch (e: unknown) {
+      alert('Error al generar pase: ' + (e instanceof Error ? e.message : 'Error desconocido'))
     } finally {
       setCreating(false)
     }
@@ -57,8 +59,8 @@ export function ResidentDashboardPage() {
     try {
       await api(`/access/passes/${id}/revoke`, { method: 'POST' })
       fetchPasses()
-    } catch (e: any) {
-      alert('Error al revocar: ' + e.message)
+    } catch (e: unknown) {
+      alert('Error al revocar: ' + (e instanceof Error ? e.message : 'Error desconocido'))
     }
   }
 
@@ -67,27 +69,27 @@ export function ResidentDashboardPage() {
       const qrData = await api<QrData>(`/access/passes/${id}/qr`)
       setActiveQr(qrData)
       setQrModalOpen(true)
-    } catch (e: any) {
-      alert('No se pudo generar el código QR: ' + e.message)
+    } catch (e: unknown) {
+      alert('No se pudo generar el código QR: ' + (e instanceof Error ? e.message : 'Error desconocido'))
     }
   }
 
   return (
     <>
-      <PageHeader 
-        title="Mis Accesos" 
-        description="Gestione sus pases y genere códigos QR para ingresar o permitir la entrada de visitantes." 
+      <PageHeader
+        title="Mis Accesos"
+        description="Gestione sus pases y genere códigos QR para ingresar o permitir la entrada de visitantes."
       />
-      
-      {error && <ErrorState message={error} />}
-      
+
+      {error && <ErrorState message={error} onRetry={fetchPasses} />}
+
       {!loading && !error && (
         <div className="space-y-6">
           <section className="flex flex-wrap gap-4">
-            <Button onClick={() => handleCreatePass(1)} disabled={creating}>
+            <Button onClick={() => void handleCreatePass(1)} disabled={creating}>
               <Plus className="mr-2 size-4" /> Pase de Visitante (1 Día)
             </Button>
-            <Button variant="outline" onClick={() => handleCreatePass(30)} disabled={creating}>
+            <Button variant="outline" onClick={() => void handleCreatePass(30)} disabled={creating}>
               <KeyRound className="mr-2 size-4" /> Pase Frecuente (30 Días)
             </Button>
           </section>
@@ -116,14 +118,14 @@ export function ResidentDashboardPage() {
                         <div className="size-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
                       )}
                     </div>
-                    
+
                     <div className="flex gap-2 mt-4">
                       {isValid ? (
                         <>
-                          <Button size="sm" className="flex-1" onClick={() => showQr(pass.id)}>
+                          <Button size="sm" className="flex-1" onClick={() => void showQr(pass.id)}>
                             <QrCode className="mr-2 size-4" /> Ver QR
                           </Button>
-                          <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => handleRevoke(pass.id)}>
+                          <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => void handleRevoke(pass.id)}>
                             <XCircle className="size-4" />
                           </Button>
                         </>
@@ -147,24 +149,19 @@ export function ResidentDashboardPage() {
         {activeQr ? (
           <div className="flex flex-col items-center justify-center p-6 text-center space-y-4">
             <div className="rounded-2xl border-4 border-white bg-white p-2 shadow-xl">
-              <img 
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(activeQr.payload)}`} 
-                alt="Código QR de Acceso" 
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(activeQr.payload)}`}
+                alt="Código QR de Acceso"
                 className="size-64"
               />
             </div>
             <div>
               <p className="text-sm font-medium">Muéstrele este código al guardia de garita</p>
               <p className="text-xs text-muted-foreground mt-2">
-                Expiración de rotación: {new Date(activeQr.expiresAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                {activeQr.expiresAt
+                  ? `Expiración de rotación: ${new Date(activeQr.expiresAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                  : `Vigencia del código rotativo: ${activeQr.expiresInSeconds ?? 30} segundos`}
               </p>
-            </div>
-            
-            <div className="mt-4 w-full rounded-md bg-muted p-3 text-left">
-              <p className="text-xs font-semibold mb-1">Payload JSON (Para tu prueba en Postman):</p>
-              <code className="text-[10px] break-all text-muted-foreground select-all">
-                {activeQr.payload}
-              </code>
             </div>
           </div>
         ) : (

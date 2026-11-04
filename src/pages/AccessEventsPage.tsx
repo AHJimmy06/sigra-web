@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+// oxlint-disable react/set-state-in-effect -- List state is synchronized with server query state.
+import { useCallback, useEffect, useState } from 'react'
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -6,87 +7,119 @@ import {
   Filter,
   Search,
   ShieldAlert,
-} from "lucide-react";
-import { api } from "@/api/client";
-import { Pagination } from "@/components/Pagination";
+} from 'lucide-react'
+import { api } from '@/api/client'
+import { toQueryString, type PaginatedResponse } from '@/api/contracts'
+import { Pagination } from '@/components/Pagination'
 import {
   EmptyState,
   ErrorState,
   LoadingState,
   PageHeader,
-} from "@/components/PageState";
-import { Modal } from "@/components/ui/modal";
-interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+} from '@/components/PageState'
+import { Modal } from '@/components/ui/modal'
+import { accessReasonLabel } from '@/lib/accessReasons'
 
 interface AccessEvent {
-  id: string;
-  decision: "ALLOWED" | "DENIED";
-  reason: string;
-  direction: "ENTRY" | "EXIT";
-  occurredAt: string;
-  resident?: { name: string; unitCode?: string };
-  guard?: { email: string };
+  id: string
+  decision: 'ALLOWED' | 'DENIED'
+  reason: string
+  direction: 'ENTRY' | 'EXIT'
+  occurredAt: string
+  requestId?: string
+  resident?: { name: string; unitCode?: string }
+  guard?: { email: string }
 }
-const reasonLabels: Record<string, string> = {
-  ALLOWED: "Acceso autorizado",
-  DENIED: "Acceso denegado",
-  EXPIRED: "Código vencido",
-  INVALID: "Código no válido",
-  INVALID_TOTP: "Código no válido",
-  RESIDENT_INACTIVE: "Residente inactivo",
-  UNIT_INACTIVE: "Unidad inactiva",
-};
+
+const legacyReasonLabels: Record<string, string> = {
+  ALLOWED: 'Acceso autorizado',
+  DENIED: 'Acceso denegado',
+  EXPIRED: 'Código vencido',
+  INVALID: 'Código no válido',
+  INVALID_TOTP: 'Código no válido',
+  RESIDENT_INACTIVE: 'Residente inactivo',
+  UNIT_INACTIVE: 'Unidad inactiva',
+}
+
+function formatReason(reason: string, decision: 'ALLOWED' | 'DENIED') {
+  return legacyReasonLabels[reason] ?? accessReasonLabel(reason, decision)
+}
+
 const decisionLabels = {
-  ALL: "Todas las decisiones",
-  ALLOWED: "Autorizados",
-  DENIED: "Denegados",
-} as const;
+  ALL: 'Todas las decisiones',
+  ALLOWED: 'Autorizados',
+  DENIED: 'Denegados',
+} as const
 
 export function AccessEventsPage() {
-  const [items, setItems] = useState<AccessEvent[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<AccessEvent[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
   const [decisionFilter, setDecisionFilter] =
-    useState<keyof typeof decisionLabels>("ALL");
-  const [directionFilter, setDirectionFilter] = useState("ALL");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [page, setPage] = useState(1);
-  const [selectedEvent, setSelectedEvent] = useState<AccessEvent | null>(null);
-  const pageSize = 10;
+    useState<keyof typeof decisionLabels>('ALL')
+  const [directionFilter, setDirectionFilter] = useState('ALL')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [page, setPage] = useState(1)
+  const [reloadToken, setReloadToken] = useState(0)
+  const [selectedEvent, setSelectedEvent] = useState<AccessEvent | null>(null)
+  const pageSize = 10
 
-  const load = () => {
-    setLoading(true);
-    const searchParams = new URLSearchParams();
-    searchParams.set("page", page.toString());
-    searchParams.set("pageSize", pageSize.toString());
-    if (query.trim()) searchParams.set("search", query.trim());
-    if (decisionFilter !== "ALL") searchParams.set("decision", decisionFilter);
-    if (directionFilter !== "ALL") searchParams.set("direction", directionFilter);
-    if (fromDate) searchParams.set("from", fromDate);
-    if (toDate) searchParams.set("to", toDate);
-
-    api<PaginatedResponse<AccessEvent>>(`/access/events?${searchParams.toString()}`)
-      .then((res) => {
-        setItems(res.items);
-        setTotal(res.total);
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true)
+      setError('')
+      const queryString = toQueryString({
+        search: query.trim() || undefined,
+        from: fromDate || undefined,
+        to: toDate || undefined,
+        decision: decisionFilter === 'ALL' ? undefined : decisionFilter,
+        direction: directionFilter === 'ALL' ? undefined : directionFilter,
+        page,
+        pageSize,
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+
+      try {
+        const res = await api<PaginatedResponse<AccessEvent>>(
+          `/access/events${queryString}`,
+          { signal },
+        )
+        if (signal?.aborted) return
+        setItems(res.items)
+        setTotal(res.total)
+      } catch (e) {
+        if (!signal?.aborted) {
+          setError(
+            e instanceof Error
+              ? e.message
+              : 'No fue posible cargar el historial de accesos.',
+          )
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false)
+        }
+      }
+    },
+    [page, query, decisionFilter, directionFilter, fromDate, toDate],
+  )
 
   useEffect(() => {
-    load();
-  }, [page, query, decisionFilter, directionFilter, fromDate, toDate]);
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
+  }, [load, reloadToken])
 
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const hasFilters = Boolean(
+    query.trim() ||
+      decisionFilter !== 'ALL' ||
+      directionFilter !== 'ALL' ||
+      fromDate ||
+      toDate,
+  )
 
   return (
     <>
@@ -94,7 +127,12 @@ export function AccessEventsPage() {
         title="Historial de accesos"
         description="Consulte las decisiones registradas por la garita y supervise el flujo de entradas y salidas."
       />
-      {error && <ErrorState message={error} />}
+      {error && (
+        <ErrorState
+          message={error}
+          onRetry={() => setReloadToken((v) => v + 1)}
+        />
+      )}
       <section
         className="mb-6 rounded-xl border bg-card p-4"
         aria-label="Filtros del historial de accesos"
@@ -110,22 +148,23 @@ export function AccessEventsPage() {
             <input
               value={query}
               onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
+                setQuery(event.target.value)
+                setPage(1)
               }}
-              placeholder="Ej. Ana García o Torre A-101"
+              placeholder="Residente, unidad o guardia"
               className="w-full rounded-lg border bg-background py-2 pl-9 pr-3"
             />
           </label>
           <label>
-            <span className="sr-only">Filtrar por decisión</span>
+            <span className="sr-only">Decisión</span>
             <select
+              aria-label="Decisión"
               value={decisionFilter}
               onChange={(event) => {
                 setDecisionFilter(
                   event.target.value as keyof typeof decisionLabels,
-                );
-                setPage(1);
+                )
+                setPage(1)
               }}
               className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"
             >
@@ -137,12 +176,13 @@ export function AccessEventsPage() {
             </select>
           </label>
           <label>
-            <span className="sr-only">Filtrar por dirección</span>
+            <span className="sr-only">Dirección</span>
             <select
+              aria-label="Dirección"
               value={directionFilter}
               onChange={(event) => {
-                setDirectionFilter(event.target.value);
-                setPage(1);
+                setDirectionFilter(event.target.value)
+                setPage(1)
               }}
               className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"
             >
@@ -152,29 +192,29 @@ export function AccessEventsPage() {
             </select>
           </label>
           <label>
-            <span className="sr-only">Fecha inicial</span>
+            <span className="sr-only">Desde</span>
             <input
               type="date"
               aria-label="Fecha inicial"
               value={fromDate}
               max={toDate || undefined}
               onChange={(event) => {
-                setFromDate(event.target.value);
-                setPage(1);
+                setFromDate(event.target.value)
+                setPage(1)
               }}
               className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"
             />
           </label>
           <label>
-            <span className="sr-only">Fecha final</span>
+            <span className="sr-only">Hasta</span>
             <input
               type="date"
               aria-label="Fecha final"
               value={toDate}
               min={fromDate || undefined}
               onChange={(event) => {
-                setToDate(event.target.value);
-                setPage(1);
+                setToDate(event.target.value)
+                setPage(1)
               }}
               className="w-full cursor-pointer rounded-lg border bg-background px-3 py-2"
             />
@@ -185,9 +225,9 @@ export function AccessEventsPage() {
         <LoadingState />
       ) : items.length === 0 ? (
         <EmptyState>
-          {total === 0
-            ? "Todavía no hay eventos de acceso."
-            : "No hay eventos que coincidan con los filtros seleccionados."}
+          {hasFilters
+            ? 'No hay eventos que coincidan con los filtros seleccionados.'
+            : 'Todavía no hay eventos de acceso.'}
         </EmptyState>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-card">
@@ -210,39 +250,39 @@ export function AccessEventsPage() {
                 >
                   <td className="p-3">
                     <span
-                      className={`inline-flex items-center gap-2 font-medium ${item.decision === "ALLOWED" ? "text-emerald-700" : "text-red-700"}`}
+                      className={`inline-flex items-center gap-2 font-medium ${item.decision === 'ALLOWED' ? 'text-emerald-700' : 'text-red-700'}`}
                     >
-                      {item.decision === "ALLOWED" ? (
+                      {item.decision === 'ALLOWED' ? (
                         <CheckCircle2 className="size-4" />
                       ) : (
                         <ShieldAlert className="size-4" />
                       )}
-                      {item.decision === "ALLOWED" ? "Autorizado" : "Denegado"}
+                      {item.decision === 'ALLOWED' ? 'Autorizado' : 'Denegado'}
                     </span>
                   </td>
                   <td className="p-3">
                     <p className="font-medium">
-                      {item.resident?.name ?? "No identificado"}
+                      {item.resident?.name ?? 'No identificado'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {item.resident?.unitCode ?? "Unidad no disponible"}
+                      {item.resident?.unitCode ?? 'Unidad no disponible'}
                     </p>
                   </td>
                   <td className="p-3">
                     <span className="inline-flex items-center gap-2">
-                      {item.direction === "ENTRY" ? (
+                      {item.direction === 'ENTRY' ? (
                         <ArrowDownToLine className="size-4" />
                       ) : (
                         <ArrowUpFromLine className="size-4" />
                       )}
-                      {item.direction === "ENTRY" ? "Entrada" : "Salida"}
+                      {item.direction === 'ENTRY' ? 'Entrada' : 'Salida'}
                     </span>
                   </td>
                   <td className="p-3">
-                    {reasonLabels[item.reason] ?? item.reason}
+                    {formatReason(item.reason, item.decision)}
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {new Date(item.occurredAt).toLocaleString("es")}
+                    {new Date(item.occurredAt).toLocaleString('es')}
                   </td>
                 </tr>
               ))}
@@ -270,43 +310,74 @@ export function AccessEventsPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/30 p-4">
               <div>
-                <span className="text-xs text-muted-foreground block">ID del Evento</span>
+                <span className="text-xs text-muted-foreground block">
+                  ID del Evento
+                </span>
                 <span className="text-sm font-mono">{selectedEvent.id}</span>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground block">Fecha y Hora</span>
-                <span className="text-sm">{new Date(selectedEvent.occurredAt).toLocaleString("es")}</span>
+                <span className="text-xs text-muted-foreground block">
+                  Fecha y Hora
+                </span>
+                <span className="text-sm">
+                  {new Date(selectedEvent.occurredAt).toLocaleString('es')}
+                </span>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground block">Dirección</span>
-                <span className="text-sm">{selectedEvent.direction === "ENTRY" ? "Entrada" : "Salida"}</span>
+                <span className="text-xs text-muted-foreground block">
+                  Dirección
+                </span>
+                <span className="text-sm">
+                  {selectedEvent.direction === 'ENTRY' ? 'Entrada' : 'Salida'}
+                </span>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground block">Guardia de Turno</span>
-                <span className="text-sm font-medium">{selectedEvent.guard?.email ?? "Desconocido"}</span>
+                <span className="text-xs text-muted-foreground block">
+                  Guardia de Turno
+                </span>
+                <span className="text-sm font-medium">
+                  {selectedEvent.guard?.email ?? 'Desconocido'}
+                </span>
               </div>
             </div>
 
             <div className="rounded-lg border p-4">
-              <h3 className="font-semibold mb-2">Información del Solicitante</h3>
-              <p className="text-sm"><span className="text-muted-foreground">Residente:</span> {selectedEvent.resident?.name ?? "No identificado"}</p>
-              <p className="text-sm"><span className="text-muted-foreground">Unidad:</span> {selectedEvent.resident?.unitCode ?? "N/A"}</p>
+              <h3 className="font-semibold mb-2">
+                Información del Solicitante
+              </h3>
+              <p className="text-sm">
+                <span className="text-muted-foreground">Residente:</span>{' '}
+                {selectedEvent.resident?.name ?? 'No identificado'}
+              </p>
+              <p className="text-sm">
+                <span className="text-muted-foreground">Unidad:</span>{' '}
+                {selectedEvent.resident?.unitCode ?? 'N/A'}
+              </p>
             </div>
 
-            <div className={`rounded-lg border p-4 ${selectedEvent.decision === "ALLOWED" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-              <h3 className={`font-semibold mb-2 ${selectedEvent.decision === "ALLOWED" ? "text-emerald-800" : "text-red-800"}`}>
-                Decisión: {selectedEvent.decision === "ALLOWED" ? "Acceso Permitido" : "Acceso Denegado"}
+            <div
+              className={`rounded-lg border p-4 ${selectedEvent.decision === 'ALLOWED' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}
+            >
+              <h3
+                className={`font-semibold mb-2 ${selectedEvent.decision === 'ALLOWED' ? 'text-emerald-800' : 'text-red-800'}`}
+              >
+                Decisión:{' '}
+                {selectedEvent.decision === 'ALLOWED'
+                  ? 'Acceso Permitido'
+                  : 'Acceso Denegado'}
               </h3>
               <p className="text-sm text-foreground/80">
-                <span className="font-medium">Razón:</span> {reasonLabels[selectedEvent.reason] ?? selectedEvent.reason}
+                <span className="font-medium">Razón:</span>{' '}
+                {formatReason(selectedEvent.reason, selectedEvent.decision)}
               </p>
               <p className="text-xs mt-2 opacity-60">
-                Nota: No se muestran llaves criptográficas ni el token QR original por políticas de seguridad.
+                Nota: No se muestran llaves criptográficas ni el token QR
+                original por políticas de seguridad.
               </p>
             </div>
           </div>
         </Modal>
       )}
     </>
-  );
+  )
 }

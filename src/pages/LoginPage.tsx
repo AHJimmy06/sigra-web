@@ -9,7 +9,7 @@ import { applyApiFieldErrors, validateFieldOnInput, validateFieldOnInvalid } fro
 export function LoginPage() {
   const { user, login } = useAuth(); const navigate = useNavigate()
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [showPassword, setShowPassword] = useState(false)
-  if (user) return <Navigate to={user.role === 'GUARD' ? '/guard' : '/dashboard'} replace />
+  if (user) return <Navigate to={user.role === 'GUARD' ? '/guard' : user.role === 'RESIDENT' ? '/resident-home' : '/dashboard'} replace />
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = event.currentTarget; if (form.dataset.submitting) return; form.dataset.submitting = 'true'; setBusy(true); setError(''); try { await login(email.trim().toLowerCase(), password); navigate('/') } catch (value) { applyApiFieldErrors(form, value); setError(value instanceof Error ? value.message : 'No fue posible iniciar sesión.') } finally { delete form.dataset.submitting; setBusy(false) } }
   return <main className="grid min-h-screen place-items-center bg-muted/40 p-4"><form id="login-form" onSubmit={submit} onInvalid={validateFieldOnInvalid} onInput={validateFieldOnInput} className="w-full max-w-sm rounded-2xl border bg-card p-7 shadow-sm">
     <div className="mb-7 flex items-center gap-3"><span className="grid size-11 place-items-center rounded-xl bg-primary text-primary-foreground"><ShieldCheck /></span><div><h1 className="text-2xl font-semibold">Bienvenido a SIGRA</h1><p className="text-sm text-muted-foreground">Inicie sesión para continuar</p></div></div>

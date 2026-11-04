@@ -14,6 +14,7 @@ vi.mock('@/pages/DashboardPage', () => ({ DashboardPage: () => <div>Admin dashbo
 vi.mock('@/pages/GuardScannerPage', () => ({ GuardScannerPage: () => <div>Guard scanner</div> }))
 vi.mock('@/pages/AccessEventsPage', () => ({ AccessEventsPage: () => <div>Access history</div> }))
 vi.mock('@/pages/ResidentDetailPage', () => ({ ResidentDetailPage: () => <div>Resident detail</div> }))
+vi.mock('@/pages/ResidentDashboardPage', () => ({ ResidentDashboardPage: () => <div>Mis Accesos</div> }))
 
 describe('role routes', () => {
   beforeEach(() => {
@@ -81,8 +82,16 @@ describe('role routes', () => {
     expect(screen.queryByText('Admin dashboard')).not.toBeInTheDocument()
   })
 
-  it('invalidates unsupported authenticated roles instead of rendering protected content', async () => {
+  it('routes RESIDENT users to resident home and blocks administration', async () => {
     auth.user = { role: 'RESIDENT' }
+    window.history.pushState({}, '', '/dashboard')
+    render(<App />)
+    expect(await screen.findByText('Mis Accesos')).toBeInTheDocument()
+    expect(screen.queryByText('Admin dashboard')).not.toBeInTheDocument()
+  })
+
+  it('invalidates unsupported authenticated roles instead of rendering protected content', async () => {
+    auth.user = { role: 'AUDITOR' as never }
     window.history.pushState({}, '', '/dashboard')
     render(<App />)
     expect(await screen.findByText('Bienvenido a SIGRA')).toBeInTheDocument()

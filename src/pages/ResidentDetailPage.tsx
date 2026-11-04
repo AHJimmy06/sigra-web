@@ -1,3 +1,4 @@
+// oxlint-disable react/set-state-in-effect -- Detail state is synchronized with route params.
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError, api } from '@/api/client'
